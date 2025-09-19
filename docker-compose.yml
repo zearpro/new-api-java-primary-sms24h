@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  store24h-api:
+    build: .
+    container_name: store24h-api
+    ports:
+      - "8080:8080" # Map container port 8080 to host port 8080
+    environment:
+      # Application settings
+      - LISTEN_PORT=8080
+      - SPRING_PROFILES_ACTIVE=docker
+
+      # External MySQL Database settings (update these with your external database details)
+      - MYSQL_HOST=${MYSQL_HOST:-zdb.cluster-akn911wxcp.us.aws.sms24h.org}
+      - MYSQL_PORT=${MYSQL_PORT:-3306}
+      - MYSQL_USER=${MYSQL_USER:-coredbuser}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-78f77cfc780794aA#W}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-coredb}
+      
+      # External MongoDB settings (update with your external MongoDB connection string)
+      - MONGO_URL=${MONGO_URL:-mongodb://your-external-mongo-host:27017/ativacoes?connectTimeoutMS=300000&minPoolSize=100&maxPoolSize=450&maxIdleTimeMS=900000}
+
+      # External Redis settings (update with your external Redis details)
+      - REDIS_HOST=${REDIS_HOST:-your-external-redis-host}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-your-redis-password}
+
+      # Database configuration
+      - HIBERNATE_DDL_AUTO=${HIBERNATE_DDL_AUTO:-validate}
+
+    restart: unless-stopped
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
