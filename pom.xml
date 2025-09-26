@@ -159,6 +159,12 @@
             <artifactId>spring-session-data-redis</artifactId>
         </dependency>
 
+        <!-- Apache Commons Pool2 for Redis connection pooling -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-pool2</artifactId>
+        </dependency>
+
         <!-- Test dependencies -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -179,7 +185,7 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
-                    <mainClass>br.com.store24h.store24h.Store24hApplication</mainClass>
+                    <mainClass>br.com.store24h.store24h.Store24hApiApplication</mainClass>
                 </configuration>
             </plugin>
 

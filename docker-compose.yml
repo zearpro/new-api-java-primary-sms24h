@@ -1,37 +1,75 @@
 version: '3.8'
 
 services:
+  # Redis Service for All Environments (Local + Production)
+  redis:
+    image: redis:7-alpine
+    container_name: store24h-redis
+    ports:
+      - "6379:6379"
+    command: >
+      redis-server 
+      --appendonly yes 
+      --requirepass ${REDIS_PASSWORD:-store24h_redis_pass}
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+    volumes:
+      - redis_data:/data
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-store24h_redis_pass}", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  # Main Application Service
   store24h-api:
     build: .
     container_name: store24h-api
     ports:
-      - "8080:8080" # Map container port 8080 to host port 8080
+      - "80:80" # Map container port 80 to host port 80
     environment:
       # Application settings
-      - LISTEN_PORT=8080
+      - LISTEN_PORT=80
       - SPRING_PROFILES_ACTIVE=docker
 
-      # External MySQL Database settings (update these with your external database details)
-      - MYSQL_HOST=${MYSQL_HOST:-zdb.cluster-akn911wxcp.us.aws.sms24h.org}
-      - MYSQL_PORT=${MYSQL_PORT:-3306}
-      - MYSQL_USER=${MYSQL_USER:-coredbuser}
-      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-78f77cfc780794aA#W}
-      - MYSQL_DATABASE=${MYSQL_DATABASE:-coredb}
+      # External MySQL Database settings (defined in .env file)
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_PORT=${MYSQL_PORT}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
       
-      # External MongoDB settings (update with your external MongoDB connection string)
-      - MONGO_URL=${MONGO_URL:-mongodb://your-external-mongo-host:27017/ativacoes?connectTimeoutMS=300000&minPoolSize=100&maxPoolSize=450&maxIdleTimeMS=900000}
+      # External MongoDB settings (defined in .env file)
+      - MONGO_URL=${MONGO_URL}
 
-      # External Redis settings (update with your external Redis details)
-      - REDIS_HOST=${REDIS_HOST:-your-external-redis-host}
-      - REDIS_PORT=${REDIS_PORT:-6379}
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-your-redis-password}
+      # Redis Container settings (for all environments)
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-store24h_redis_pass}
 
       # Database configuration
-      - HIBERNATE_DDL_AUTO=${HIBERNATE_DDL_AUTO:-validate}
+      - HIBERNATE_DDL_AUTO=${HIBERNATE_DDL_AUTO}
+      
+      # Redis configuration
+      - USE_REDIS_REMOTE=false
 
+    depends_on:
+      redis:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - app-network
+
+volumes:
+  redis_data:
+    driver: local
 
 networks:
   app-network:

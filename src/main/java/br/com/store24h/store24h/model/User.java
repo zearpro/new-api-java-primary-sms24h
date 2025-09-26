@@ -22,6 +22,7 @@ import java.io.Serializable;
 import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.HashSet;
+import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.GeneratedValue;
 import javax.persistence.GenerationType;
@@ -50,10 +51,14 @@ Serializable {
     private String cpf;
     private String senha;
     private String apiKey;
+    @Column(columnDefinition = "INT")
     private boolean whatsapp_enabled;
+    @Column(columnDefinition = "INT")
     private String callback_apiv2_id;
     private String tipo_de_api;
+    @Column(columnDefinition = "FLOAT")
     private BigDecimal credito = BigDecimal.valueOf(0L);
+    @Column(columnDefinition = "FLOAT")
     private BigDecimal agente_porcentagem_pagamento = BigDecimal.valueOf(100L);
     private String agente = null;
 

@@ -8,7 +8,6 @@
  *  org.springframework.data.redis.connection.RedisConnectionFactory
  *  org.springframework.data.redis.connection.lettuce.LettuceClientConfiguration
  *  org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory
- *  org.springframework.data.redis.connection.lettuce.LettucePoolingClientConfiguration
  *  org.springframework.data.redis.core.RedisTemplate
  *  org.springframework.data.redis.serializer.GenericToStringSerializer
  *  org.springframework.data.redis.serializer.RedisSerializer
@@ -27,7 +26,6 @@ import org.springframework.data.redis.connection.RedisClusterConfiguration;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.connection.lettuce.LettuceClientConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
-import org.springframework.data.redis.connection.lettuce.LettucePoolingClientConfiguration;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.serializer.GenericToStringSerializer;
 import org.springframework.data.redis.serializer.RedisSerializer;
@@ -43,20 +41,26 @@ public class RedisConfig {
 
     @Bean
     public LettuceConnectionFactory redisConnectionFactory() {
-        if (System.getenv("USE_REDIS_LOCAL") != null) {
-            return new LettuceConnectionFactory("redis", 6379);
-        }
-        if (Utils.getVersion().equals((Object)VersionEnum.VERSION_2) || System.getenv("USE_REDIS_REMOTE") != null) {
-            List<String> redisArray = Arrays.asList("redis-api-versao-2-0001-001.redis-api-versao-2.uih1si.memorydb.us-east-2.amazonaws.com:6379", "redis-api-versao-2-0001-002.redis-api-versao-2.uih1si.memorydb.us-east-2.amazonaws.com:6379");
-            RedisClusterConfiguration clusterConfig = new RedisClusterConfiguration(redisArray);
-            System.out.println("Redis login " + redisArray.toString());
-            clusterConfig.setMaxRedirects(3);
-            clusterConfig.setPassword("vv10Fn0c4P8AlT8S");
-            clusterConfig.setUsername("admin-user");
-            LettucePoolingClientConfiguration clientConfig = LettucePoolingClientConfiguration.builder().useSsl().disablePeerVerification().build();
-            return new LettuceConnectionFactory(clusterConfig, (LettuceClientConfiguration)clientConfig);
-        }
-        return new LettuceConnectionFactory("redis", 6379);
+        // Get Redis configuration from environment variables
+        String redisHost = System.getenv("REDIS_HOST");
+        String redisPort = System.getenv("REDIS_PORT");
+        String redisPassword = System.getenv("REDIS_PASSWORD");
+        
+        // Default to container configuration
+        if (redisHost == null) redisHost = "redis";
+        if (redisPort == null) redisPort = "6379";
+        if (redisPassword == null) redisPassword = "store24h_redis_pass";
+        
+        int port = Integer.parseInt(redisPort);
+        
+        // Minimal Redis connection logging - only on errors
+        
+        // Create simple connection factory for Redis container
+        LettuceConnectionFactory factory = new LettuceConnectionFactory(redisHost, port);
+        factory.setPassword(redisPassword);
+        factory.setValidateConnection(true);
+        
+        return factory;
     }
 
     @Bean

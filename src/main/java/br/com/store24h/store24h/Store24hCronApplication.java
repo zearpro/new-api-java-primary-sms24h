@@ -1,9 +1,6 @@
 package br.com.store24h.store24h;
 
 import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.cache.annotation.EnableCaching;
-import org.springframework.transaction.annotation.EnableTransactionManagement;
 
 /**
  * Cron Tasks Application - DISABLED FOR PRODUCTION
@@ -11,10 +8,10 @@ import org.springframework.transaction.annotation.EnableTransactionManagement;
  * 
  * @author Archer (brainuxdev@gmail.com)
  */
-@EnableCaching
+// @EnableCaching - DISABLED FOR PRODUCTION
 // @EnableScheduling - DISABLED: No cron tasks should run in production
-@EnableTransactionManagement
-@SpringBootApplication
+// @EnableTransactionManagement - DISABLED FOR PRODUCTION
+// @SpringBootApplication - DISABLED: This class is not used in production
 public class Store24hCronApplication {
 
     public static void main(String[] args) {

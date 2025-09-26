@@ -4,6 +4,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
+import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
 /**
  * Main API Application - High Performance Version
@@ -14,6 +15,7 @@ import org.springframework.transaction.annotation.EnableTransactionManagement;
 @EnableCaching
 @EnableTransactionManagement
 @SpringBootApplication
+@EnableJpaRepositories(basePackages = "br.com.store24h.store24h.repository")
 public class Store24hApiApplication {
 
     public static void main(String[] args) {

@@ -6,9 +6,6 @@
 package br.com.store24h.store24h;
 
 import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.cache.annotation.EnableCaching;
-import org.springframework.transaction.annotation.EnableTransactionManagement;
 
 /**
  *
@@ -18,9 +15,10 @@ import org.springframework.transaction.annotation.EnableTransactionManagement;
  * - Store24hApiApplication.java - for REST API services
  * - Store24hCronApplication.java - for background processing
  */
-@EnableCaching
-@EnableTransactionManagement
-@SpringBootApplication
+// Legacy launcher class - Spring Boot annotations removed to prevent conflicts
+// @EnableCaching - MOVED to Store24hApiApplication
+// @EnableTransactionManagement - MOVED to Store24hApiApplication
+// @SpringBootApplication - REMOVED to prevent duplicate configuration
 public class Store24hApplication {
 
   public static void main(String[] args) {

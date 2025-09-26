@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- Define the log pattern for console output -->
+    <springProfile name="!docker">
+        <!-- Local development - more detailed logs -->
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>%d{HH:mm:ss.SSS} %-5level [%15.15t] %-30.30logger{29} : %msg%n</pattern>
+            </encoder>
+        </appender>
+    </springProfile>
+    
+    <springProfile name="docker">
+        <!-- Docker/Production - minimal logs -->
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>%d{HH:mm:ss} %-5level %logger{20} : %msg%n</pattern>
+            </encoder>
+        </appender>
+    </springProfile>
+    
+    <!-- Application-specific loggers -->
+    <logger name="br.com.store24h" level="INFO" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+    </logger>
+    
+    <!-- Silence noisy frameworks -->
+    <logger name="org.springframework" level="ERROR"/>
+    <logger name="org.apache" level="ERROR"/>
+    <logger name="org.hibernate" level="ERROR"/>
+    <logger name="com.zaxxer.hikari" level="ERROR"/>
+    <logger name="org.mongodb.driver" level="ERROR"/>
+    <logger name="io.lettuce.core" level="ERROR"/>
+    <logger name="org.springframework.data.repository.config" level="ERROR"/>
+    <logger name="org.springframework.data.redis" level="ERROR"/>
+    <logger name="org.springframework.data.mongodb" level="ERROR"/>
+    <logger name="org.springframework.security" level="ERROR"/>
+    <logger name="org.springframework.web" level="ERROR"/>
+    <logger name="org.springframework.boot.autoconfigure" level="ERROR"/>
+    <logger name="org.springframework.context" level="ERROR"/>
+    <logger name="org.springframework.beans" level="ERROR"/>
+    
+    <!-- Only show critical startup information -->
+    <logger name="org.springframework.boot.SpringApplication" level="WARN"/>
+    <logger name="org.springframework.boot.web.embedded.tomcat.TomcatWebServer" level="WARN"/>
+    
+    <!-- Root logger - only errors -->
+    <root level="ERROR">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+</configuration>
