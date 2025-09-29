@@ -1,6 +1,7 @@
 # Environment Variables and Secrets
 .env
 .env.local
+.env.dev
 .env.production
 .env.staging
 .env.development
@@ -254,3 +255,11 @@ local.yaml
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Performance analysis files (regenerated)
+PERFORMANCE_ANALYSIS.md
+PERFORMANCE_SUMMARY.md
+PRD.md
+
+# Test and validation files
+test-connections.sh

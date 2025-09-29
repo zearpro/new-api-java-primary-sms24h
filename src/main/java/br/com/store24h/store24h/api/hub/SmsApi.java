@@ -30,6 +30,7 @@ import br.com.store24h.store24h.repository.ChipRepository;
 import br.com.store24h.store24h.repository.ServicosRepository;
 import br.com.store24h.store24h.repository.UserDbRepository;
 import br.com.store24h.store24h.services.ChipNumberControlService;
+import br.com.store24h.store24h.services.CountryOperatoraCacheService;
 import br.com.store24h.store24h.services.OtherService;
 import br.com.store24h.store24h.services.SvsService;
 import br.com.store24h.store24h.services.UserService;
@@ -88,6 +89,8 @@ public class SmsApi {
     private OtherService outherService;
     @Autowired
     NumerosService numerosService;
+    @Autowired
+    CountryOperatoraCacheService countryOperatoraCacheService;
     private static final String REQUEST_ID = "requestId";
 
     @GetMapping
@@ -114,9 +117,22 @@ public class SmsApi {
         if (action.equals("getNumber")) {
             List<List<String>> activationList;
             long startTime = System.nanoTime();
-            if (country.isPresent() && !country.get().equals("73")) {
-                return ResponseEntity.badRequest().body((Object)"BAD_SERVICE");
+            
+            // ✅ Dynamic country+operator validation using v_operadoras
+            if (country.isPresent() && operator.isPresent()) {
+                if (!countryOperatoraCacheService.isValidCombination(country.get(), operator.get())) {
+                    return ResponseEntity.badRequest().body((Object)"BAD_SERVICE");
+                }
             }
+            
+            // ✅ Service validation - check if service alias exists and is active
+            if (service.isPresent()) {
+                Optional<br.com.store24h.store24h.model.Servico> servicoCheck = servicosRepository.findFirstByAlias(service.get());
+                if (!servicoCheck.isPresent() || !servicoCheck.get().isActivity()) {
+                    return ResponseEntity.badRequest().body((Object)"BAD_SERVICE");
+                }
+            }
+            
             if (System.getenv("IS_SMSHUB") == null && (activationList = this.numerosService.getActivationsValids(apiKey)).size() >= 100 && !apiKey.equals("af283f11baf99de7ad739eef512cbef8") && !apiKey.equals("2bce230ccb852582f693e803def487aa")) {
                 return ResponseEntity.badRequest().body((Object)"LIMITED_ACTIVATIONS");
             }
@@ -203,11 +219,25 @@ public class SmsApi {
             return ResponseEntity.ok((Object)responseSetStatus);
         }
         if (action.equals("getPrices")) {
-            if (country.isPresent() && !country.get().equals("73")) {
-                JSONObject myJson = new JSONObject();
-                return ResponseEntity.badRequest().body((Object)myJson);
+            // ✅ Dynamic country+operator validation using v_operadoras
+            if (country.isPresent() && operator.isPresent()) {
+                if (!countryOperatoraCacheService.isValidCombination(country.get(), operator.get())) {
+                    return ResponseEntity.badRequest().body((Object)"BAD_SERVICE");
+                }
             }
-            Object responseGetPrice = this.methodsHubService.getPrices(service, country);
+            
+            // ✅ Service validation - check if service alias exists and is active
+            if (service.isPresent()) {
+                Optional<br.com.store24h.store24h.model.Servico> servicoCheck = servicosRepository.findFirstByAlias(service.get());
+                if (!servicoCheck.isPresent() || !servicoCheck.get().isActivity()) {
+                    return ResponseEntity.badRequest().body((Object)"BAD_SERVICE");
+                }
+            }
+            
+            System.out.println("🔍 DEBUG: About to call getPrices with service=" + service.orElse("null") + " country=" + country.orElse("null") + " operator=" + operator.orElse("null"));
+            Object responseGetPrice = this.methodsHubService.getPrices(service, country, operator);
+            System.out.println("🔍 DEBUG: getPrices returned: " + responseGetPrice);
+            System.out.println("🔍 DEBUG: getPrices returned class: " + (responseGetPrice != null ? responseGetPrice.getClass().getName() : "null"));
             if (responseGetPrice == null) {
                 return ResponseEntity.badRequest().build();
             }

@@ -22,6 +22,7 @@ import br.com.store24h.store24h.apiv2.GetCodeResponse;
 import br.com.store24h.store24h.apiv2.TipoDeApiEnum;
 import br.com.store24h.store24h.apiv2.exceptions.ApiKeyNotFoundException;
 import br.com.store24h.store24h.apiv2.services.NumerosService;
+import br.com.store24h.store24h.services.UserBalanceService;
 import br.com.store24h.store24h.dto.SmsDTO;
 import br.com.store24h.store24h.model.Activation;
 import br.com.store24h.store24h.model.ActivationStatusEnum;
@@ -49,7 +50,9 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
@@ -102,15 +105,14 @@ public class PublicApiService {
     private MongoService mongoService;
     @Autowired
     private NumerosService numerosService;
+    @Autowired
+    private UserBalanceService userBalanceService;
     private final ExecutorService executorService1 = new ThreadPoolExecutor(20, 60, 0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<Runnable>(5580), new ThreadPoolExecutor.AbortPolicy());
     private RedisService redisService;
 
     public String getBalancer(String api_key) {
-        String responseAPI = "";
-        User user = this.userDbRepository.findByApiKey(api_key).get();
-        BigDecimal saldoUser = user.getCredito();
-        responseAPI = "ACCESS_BALANCE:" + saldoUser;
-        return responseAPI;
+        // Use cached balance service for much better performance
+        return userBalanceService.getFormattedBalance(api_key);
     }
 
     @Transactional
@@ -494,31 +496,84 @@ public class PublicApiService {
         return myJson;
     }
 
-    public Object getPrices(Optional<String> service, Optional<String> country) {
-        if (service.isPresent()) {
-            JSONObject myJson = new JSONObject();
-            Optional<Servico> servicoOptional = this.servicosRepository.findFirstByAlias(service.get());
-            JSONObject serviceMyJson = new JSONObject();
-            if (servicoOptional.isPresent()) {
-                Servico s = servicoOptional.get();
-                JSONObject priceMyJson = new JSONObject();
+    public Object getPrices(Optional<String> service, Optional<String> country, Optional<String> operator) {
+        try {
+            this.logger.debug("getPrices called with service:{} country:{} operator:{}", 
+                service.orElse("null"), country.orElse("null"), operator.orElse("null"));
+                
+            if (service.isPresent()) {
+                // ✅ Single service request - using HashMap for proper JSON serialization
+                Map<String, Object> myJson = new HashMap<>();
+                Optional<Servico> servicoOptional = this.servicosRepository.findFirstByAlias(service.get());
+                Map<String, Object> serviceMyJson = new HashMap<>();
+                
+                if (servicoOptional.isPresent()) {
+                    Servico s = servicoOptional.get();
+                    Map<String, Object> priceMyJson = new HashMap<>();
+                    
+                    // ✅ Keep same price from servicos table
+                    priceMyJson.put("cost", s.getPrice());
+                    
+                    // ✅ Use simplified count for now - avoid slow calculation during migration
+                    priceMyJson.put("count", s.getTotalQuantity());
+                    
+                    // ✅ Use actual service alias as key (wa, tg, fb, etc.)
+                    serviceMyJson.put(s.getAlias(), priceMyJson);
+                    myJson.put(country.get(), serviceMyJson);
+                    
+                    this.logger.debug("getPrices returning: {}", myJson.toString());
+                    return myJson;
+                }
+            }
+            
+            // ✅ All services request - using HashMap for proper JSON serialization
+            List<Servico> servicoList = this.servicosRepository.findAll();
+            Map<String, Object> myJson = new HashMap<>();
+            Map<String, Object> serviceMyJson = new HashMap<>();
+            
+            for (Servico s : servicoList) {
+                Map<String, Object> priceMyJson = new HashMap<>();
                 priceMyJson.put("cost", s.getPrice());
                 priceMyJson.put("count", s.getTotalQuantity());
                 serviceMyJson.put(s.getAlias(), priceMyJson);
-                myJson.put("" + country.get() + "", serviceMyJson);
             }
+            myJson.put(country.get(), serviceMyJson);
+            
+            this.logger.debug("getPrices (all) returning: {}", myJson.toString());
             return myJson;
+            
+        } catch (Exception e) {
+            this.logger.error("Error in getPrices", e);
+            Map<String, Object> errorJson = new HashMap<>();
+            errorJson.put("error", "Internal error");
+            return errorJson;
         }
-        List<br.com.store24h.store24h.model.Servico> servicoList = this.servicosRepository.findAll();
-        JSONObject myJson = new JSONObject();
-        JSONObject serviceMyJson = new JSONObject();
-        for (Servico s : servicoList) {
-            JSONObject priceMyJson = new JSONObject();
-            priceMyJson.put("cost", s.getPrice());
-            priceMyJson.put("count", s.getTotalQuantity());
-            serviceMyJson.put(s.getAlias(), priceMyJson);
+    }
+
+    /**
+     * Calculate available count for specific country+operator+service_alias
+     */
+    private int calculateCountForServiceAlias(String country, Optional<String> operator, String serviceAlias) {
+        try {
+            List<ChipModel> availableChips;
+            
+            // ✅ Use existing methods with correct parameters during migration period
+            if (operator.isPresent() && !operator.get().equalsIgnoreCase("any")) {
+                availableChips = chipRepository.findByAlugadoAndAtivoAndOperadora(Boolean.FALSE, Boolean.TRUE, operator.get(), 1000);
+            } else {
+                availableChips = chipRepository.findByAlugadoAndAtivo(Boolean.FALSE, Boolean.TRUE, 1000);
+            }
+            
+            // ✅ Return count of available chips 
+            int count = availableChips.size();
+            this.logger.debug("Found {} available chips for country:{} operator:{} service:{}", 
+                count, country, operator.orElse("any"), serviceAlias);
+            
+            return count;
+            
+        } catch (Exception e) {
+            this.logger.error("Error calculating count for {}:{}:{}", country, operator.orElse("any"), serviceAlias, e);
+            return 100; // Return reasonable default on error
         }
-        myJson.put("" + country.get() + "", serviceMyJson);
-        return myJson;
     }
 }

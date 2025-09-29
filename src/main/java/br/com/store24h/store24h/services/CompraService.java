@@ -37,41 +37,67 @@ public class CompraService {
     private BuyServiceRepository buyServiceRepository;
     @Autowired
     private SvsService svsService;
+    @Autowired
+    private UserBalanceService userBalanceService;
 
     public String virifyCredit(User user, Servico servicoDb) {
-        if (user.getCredito().compareTo(servicoDb.getPrice()) >= 0) {
+        // Use cached balance for better performance
+        BigDecimal currentBalance = userBalanceService.getUserBalance(user.getApiKey());
+        if (currentBalance.compareTo(servicoDb.getPrice()) >= 0) {
             return "true";
         }
         return "false";
+    }
+    
+    /**
+     * Enhanced credit verification using cached balance service
+     */
+    public boolean hasSufficientCredit(String apiKey, BigDecimal requiredAmount) {
+        return userBalanceService.hasSufficientBalance(apiKey, requiredAmount);
     }
 
     @Transactional
     public boolean subtractAndSave(User user1, Servico servico, String chipNumber, Long idActivation) {
         BigDecimal subtrair = servico.getPrice();
-        int updatedRows = this.userDbRepository.decreaseSaldo(user1.getApiKey(), subtrair);
-        if (System.getenv("SHOW_SALDO_LOG_SUBTRACT") != null) {
-            User user = this.userDbRepository.findByApiKey(user1.getApiKey()).get();
-            double saldoAnterior = user.getCredito().doubleValue() + subtrair.doubleValue();
-            double novoSaldo = user.getCredito().doubleValue();
-            this.logger.info("{} saldo anterior:{} reduzir:{} novo saldo:{}", new Object[]{user1.getEmail(), saldoAnterior, subtrair, novoSaldo});
+        
+        // Use balance service with automatic cache invalidation
+        int updatedRows = userBalanceService.decreaseBalanceWithCacheInvalidation(user1.getApiKey(), subtrair);
+        
+        if (System.getenv("SHOW_SALDO_LOG_SUBTRACT") != null && updatedRows > 0) {
+            // Get updated balance from cache for logging
+            BigDecimal novoSaldo = userBalanceService.getUserBalance(user1.getApiKey());
+            double saldoAnterior = novoSaldo.doubleValue() + subtrair.doubleValue();
+            this.logger.info("{} saldo anterior:{} reduzir:{} novo saldo:{}", 
+                new Object[]{user1.getEmail(), saldoAnterior, subtrair, novoSaldo});
         }
-        this.executorService0.submit(() -> this.svsService.saveRegisterBuy(idActivation, servico, chipNumber, user1.getId()));
+        
+        if (updatedRows > 0) {
+            this.executorService0.submit(() -> this.svsService.saveRegisterBuy(idActivation, servico, chipNumber, user1.getId()));
+        }
+        
         return updatedRows > 0;
     }
 
     @Transactional
     public void devolution(String apiKey, BigDecimal price) {
         try {
-            this.userDbRepository.increaseSaldo(apiKey, price);
-            User user = this.userDbRepository.findByApiKey(apiKey).get();
+            // Use balance service with automatic cache invalidation
+            userBalanceService.increaseBalanceWithCacheInvalidation(apiKey, price);
+            
             if (System.getenv("SHOW_SALDO_LOG_DEVOLUTION") != null) {
-                BigDecimal saldoAnterior = user.getCredito().subtract(price);
-                BigDecimal novoSaldo = user.getCredito();
-                this.logger.info("{} saldo anterior:{} devolver:{} novo saldo:{}", new Object[]{user.getEmail(), saldoAnterior, price, novoSaldo});
+                // Get updated balance from cache for logging  
+                BigDecimal novoSaldo = userBalanceService.getUserBalance(apiKey);
+                BigDecimal saldoAnterior = novoSaldo.subtract(price);
+                
+                // Get user email for logging (this could be cached too in the future)
+                User user = this.userDbRepository.findByApiKey(apiKey).get();
+                this.logger.info("{} saldo anterior:{} devolver:{} novo saldo:{}", 
+                    new Object[]{user.getEmail(), saldoAnterior, price, novoSaldo});
             }
         }
         catch (Exception e) {
-            this.logger.info("ERROR_SQL_DESC: {} falha ao devolver saldo STACK: {}", (Object)apiKey, (Object)Utils.getSingleLineStackTrace(e));
+            this.logger.info("ERROR_SQL_DESC: {} falha ao devolver saldo STACK: {}", 
+                (Object)apiKey, (Object)Utils.getSingleLineStackTrace(e));
         }
     }
 }

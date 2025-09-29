@@ -23,7 +23,7 @@ import javax.persistence.Index;
 import javax.persistence.Table;
 
 @Entity
-@Table(name="chip_model", indexes={@Index(name="idx_alugado", columnList="alugado"), @Index(name="idx_ativo", columnList="ativo")})
+@Table(name="chip_model", indexes={@Index(name="idx_alugado", columnList="alugado"), @Index(name="idx_ativo", columnList="ativo"), @Index(name="idx_country", columnList="country")})
 public class ChipModel
 implements Serializable {
     private static final long serialVersionUID = 1L;
@@ -34,6 +34,8 @@ implements Serializable {
     private String operadora;
     @Column(unique=true, nullable=false)
     private String number;
+    @Column(name="country", nullable=true)
+    private String country;
     private Boolean ativo = false;
     private Boolean alugado = false;
     private String pcId;
@@ -116,8 +118,16 @@ implements Serializable {
         this.number = number;
     }
 
+    public String getCountry() {
+        return this.country;
+    }
+
+    public void setCountry(String country) {
+        this.country = country;
+    }
+
     public String toString() {
-        return "ChipModel{operadora=" + this.operadora + ", number=" + this.number + "}";
+        return "ChipModel{operadora=" + this.operadora + ", number=" + this.number + ", country=" + this.country + "}";
     }
 
     public int hashCode() {

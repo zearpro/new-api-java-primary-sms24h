@@ -1,6 +1,30 @@
 version: '3.8'
 
 services:
+  # RabbitMQ Service for SMS Message Processing
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: store24h-rabbitmq
+    hostname: rabbitmq
+    ports:
+      - "5672:5672"   # AMQP port
+      - "15672:15672" # Management UI port
+    environment:
+      - RABBITMQ_DEFAULT_USER=guesta
+      - RABBITMQ_DEFAULT_PASS=guesta
+      - RABBITMQ_DEFAULT_VHOST=/
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
   # Redis Service for All Environments (Local + Production)
   redis:
     image: redis:7-alpine
@@ -59,9 +83,24 @@ services:
       
       # Redis configuration
       - USE_REDIS_REMOTE=false
+      
+      # Cache warming configuration - Optimized intervals
+      - CACHE_WARMING_ENABLED=${CACHE_WARMING_ENABLED:-true}
+      - CACHE_WARMING_SERVICES_RATE=${CACHE_WARMING_SERVICES_RATE:-900000}
+      - CACHE_WARMING_CALLBACKS_RATE=${CACHE_WARMING_CALLBACKS_RATE:-900000}
+      - CACHE_WARMING_USERS_RATE=${CACHE_WARMING_USERS_RATE:-900000}
+      - CACHE_WARMING_NUMBERS_RATE=${CACHE_WARMING_NUMBERS_RATE:-600000}
+      - CACHE_WARMING_CONFIGS_RATE=${CACHE_WARMING_CONFIGS_RATE:-900000}
+      - CACHE_WARMING_BALANCE_RATE=${CACHE_WARMING_BALANCE_RATE:-1800000}
+      - CACHE_WARMING_OPERATORS_RATE=${CACHE_WARMING_OPERATORS_RATE:-300000}
+      
+      # RabbitMQ configuration
+      - RABBITMQ_HOST=rabbitmq
 
     depends_on:
       redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     restart: unless-stopped
     networks:
@@ -69,6 +108,8 @@ services:
 
 volumes:
   redis_data:
+    driver: local
+  rabbitmq_data:
     driver: local
 
 networks:

@@ -62,7 +62,7 @@ $DOCKER_COMPOSE_CMD build --no-cache
 
 # Start the application
 echo "🚀 Starting the application..."
-$DOCKER_COMPOSE_CMD up -d
+$DOCKER_COMPOSE_CMD --env-file .env up -d
 
 # Wait for the application to start with better health checking
 echo "⏳ Waiting for application to start..."

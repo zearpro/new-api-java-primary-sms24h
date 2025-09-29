@@ -43,4 +43,27 @@ public class RabbitConfig {
     public AmqpAdmin amqpAdmin(ConnectionFactory connectionFactory) {
         return new RabbitAdmin(connectionFactory);
     }
+
+    /**
+     * Phase 1 Velocity Layer - Number assignment queue
+     * Handles async number assignment processing
+     */
+    @Bean
+    public org.springframework.amqp.core.Queue numberAssignedQueue() {
+        return org.springframework.amqp.core.QueueBuilder
+            .durable("number.assigned")
+            .withArgument("x-message-ttl", 300000) // 5 minutes TTL for safety
+            .build();
+    }
+
+    /**
+     * Health check queue for monitoring
+     */
+    @Bean
+    public org.springframework.amqp.core.Queue healthCheckQueue() {
+        return org.springframework.amqp.core.QueueBuilder
+            .durable("health.check")
+            .withArgument("x-message-ttl", 30000) // 30 seconds TTL
+            .build();
+    }
 }

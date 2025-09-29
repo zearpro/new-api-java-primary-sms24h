@@ -1,0 +1,96 @@
+version: '3.8'
+
+services:
+  # Redis Service for Development
+  redis:
+    image: redis:7-alpine
+    container_name: store24h-redis-dev
+    ports:
+      - "6379:6379"
+    command: >
+      redis-server 
+      --appendonly yes 
+      --requirepass ${REDIS_PASSWORD:-store24h_redis_pass}
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data_dev:/data
+    networks:
+      - app-network-dev
+    restart: unless-stopped
+
+  # RabbitMQ Service for Development
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: store24h-rabbitmq-dev
+    hostname: rabbitmq
+    ports:
+      - "5672:5672"   # AMQP port
+      - "15672:15672" # Management UI port
+    environment:
+      - RABBITMQ_DEFAULT_USER=guesta
+      - RABBITMQ_DEFAULT_PASS=guesta
+      - RABBITMQ_DEFAULT_VHOST=/
+    volumes:
+      - rabbitmq_data_dev:/var/lib/rabbitmq
+    networks:
+      - app-network-dev
+    restart: unless-stopped
+
+  # Main Application Service for Development
+  store24h-api:
+    container_name: store24h-api-dev
+    build:
+      context: .
+      dockerfile: Dockerfile # We can use the same Dockerfile as it contains the build environment
+    command: mvn spring-boot:run -Dspring-boot.run.jvmArguments="-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=*:5005"
+    volumes:
+      - ./src:/app/src
+      - ./pom.xml:/app/pom.xml
+      - maven-repo:/root/.m2
+    ports:
+      - "${LISTEN_PORT:-80}:80"
+      - "5005:5005" # Expose debug port
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - LISTEN_PORT=80
+      
+      # External MySQL Database settings
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_PORT=${MYSQL_PORT}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      
+      # External MongoDB settings
+      - MONGO_URL=${MONGO_URL}
+
+      # Redis Container settings
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-store24h_redis_pass}
+
+      # Database configuration - allow DDL updates for development
+      - HIBERNATE_DDL_AUTO=update
+      
+      # RabbitMQ configuration
+      - RABBITMQ_HOST=rabbitmq
+      
+      # Cache warming configuration
+      - CACHE_WARMING_ENABLED=${CACHE_WARMING_ENABLED:-true}
+    depends_on:
+      - redis
+      - rabbitmq
+    networks:
+      - app-network-dev
+
+volumes:
+  maven-repo:
+  redis_data_dev:
+    driver: local
+  rabbitmq_data_dev:
+    driver: local
+
+networks:
+  app-network-dev:
+    driver: bridge
