@@ -117,12 +117,18 @@ public class OptimizedUserCacheService {
     /**
      * Get user's API type (cacheable - not critical for balance/ACL)
      */
-    @Cacheable(value = "userApiType", key = "#apiKey")
+    @Cacheable(value = "userApiType", key = "#apiKey", unless = "#result == null")
     public TipoDeApiEnum getUserApiType(String apiKey) {
         try {
             Optional<User> userOpt = userDbRepository.findByApiKey(apiKey);
             if (userOpt.isPresent()) {
-                return userOpt.get().getTipo_de_api();
+                TipoDeApiEnum tipo = userOpt.get().getTipo_de_api();
+                if (tipo == null) {
+                    logger.warn("User tipo_de_api is null for: {}", apiKey.substring(0, 8) + "***");
+                    // Default to ANTIGA (legacy) if missing to preserve access
+                    return TipoDeApiEnum.ANTIGA;
+                }
+                return tipo;
             }
             return null;
         } catch (Exception e) {

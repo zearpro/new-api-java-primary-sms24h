@@ -5,16 +5,18 @@ import br.com.store24h.store24h.model.Servico;
 import br.com.store24h.store24h.model.User;
 import br.com.store24h.store24h.apiv2.TipoDeApiEnum;
 import br.com.store24h.store24h.repository.ServicosRepository;
+import br.com.store24h.store24h.services.RedisSetService;
 import br.com.store24h.store24h.services.core.TipoDeApiNotPermitedException;
 import br.com.store24h.store24h.apiv2.exceptions.ApiKeyNotFoundException;
-import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -45,29 +47,44 @@ public class OptimizedPublicApiService {
     @Autowired
     private ServicosRepository servicosRepository;
     
+    @Autowired
+    private RedisSetService redisSetService;
+    
     /**
-     * Optimized getPrices with full caching
+     * Optimized getPrices with full caching and Redis pool counts
      * Performance improvement: ~60-80% faster than original
      */
-    public Object getPricesOptimized(Optional<String> service, Optional<String> country) {
+    public Object getPricesOptimized(Optional<String> service, Optional<String> country, Optional<String> operator) {
         long startTime = System.nanoTime();
         
         try {
             if (service.isPresent()) {
-                // Single service lookup - use cached service
-                JSONObject myJson = new JSONObject();
+                // Single service lookup - use cached service + Redis pool counts
+                Map<String, Object> myJson = new HashMap<>();
                 
                 // Use cached service lookup
                 Servico cachedService = cacheService.getServiceCache(service.get());
                 if (cachedService != null) {
-                    JSONObject serviceMyJson = new JSONObject();
-                    JSONObject priceMyJson = new JSONObject();
+                    Map<String, Object> serviceMyJson = new HashMap<>();
+                    Map<String, Object> priceMyJson = new HashMap<>();
                     priceMyJson.put("cost", cachedService.getPrice());
-                    priceMyJson.put("count", cachedService.getTotalQuantity());
-                    serviceMyJson.put(cachedService.getAlias(), priceMyJson);
-                    myJson.put("" + country.get() + "", serviceMyJson);
                     
-                    logger.debug("✅ getPrices (single) - cached service used in {}ms", 
+                    // ✅ Prefer Redis pool count if operator and country provided; fallback to DB field
+                    if (operator.isPresent() && country.isPresent()) {
+                        try {
+                            long poolCount = redisSetService.getAvailableCount(operator.get(), cachedService.getAlias(), country.get());
+                            priceMyJson.put("count", poolCount);
+                        } catch (Exception ex) {
+                            priceMyJson.put("count", cachedService.getTotalQuantity());
+                        }
+                    } else {
+                        priceMyJson.put("count", cachedService.getTotalQuantity());
+                    }
+                    
+                    serviceMyJson.put(cachedService.getAlias(), priceMyJson);
+                    myJson.put(country.get(), serviceMyJson);
+                    
+                    logger.debug("✅ getPrices (single) - cached service + Redis count used in {}ms", 
                         (System.nanoTime() - startTime) / 1000000);
                     return myJson;
                 }
@@ -76,14 +93,26 @@ public class OptimizedPublicApiService {
                 Optional<Servico> servicoOptional = servicosRepository.findFirstByAlias(service.get());
                 if (servicoOptional.isPresent()) {
                     Servico s = servicoOptional.get();
-                    JSONObject serviceMyJson = new JSONObject();
-                    JSONObject priceMyJson = new JSONObject();
+                    Map<String, Object> serviceMyJson = new HashMap<>();
+                    Map<String, Object> priceMyJson = new HashMap<>();
                     priceMyJson.put("cost", s.getPrice());
-                    priceMyJson.put("count", s.getTotalQuantity());
-                    serviceMyJson.put(s.getAlias(), priceMyJson);
-                    myJson.put("" + country.get() + "", serviceMyJson);
                     
-                    logger.debug("⚠️ getPrices (single) - cache miss, used DB in {}ms", 
+                    // ✅ Prefer Redis pool count if operator and country provided; fallback to DB field
+                    if (operator.isPresent() && country.isPresent()) {
+                        try {
+                            long poolCount = redisSetService.getAvailableCount(operator.get(), s.getAlias(), country.get());
+                            priceMyJson.put("count", poolCount);
+                        } catch (Exception ex) {
+                            priceMyJson.put("count", s.getTotalQuantity());
+                        }
+                    } else {
+                        priceMyJson.put("count", s.getTotalQuantity());
+                    }
+                    
+                    serviceMyJson.put(s.getAlias(), priceMyJson);
+                    myJson.put(country.get(), serviceMyJson);
+                    
+                    logger.debug("⚠️ getPrices (single) - cache miss, used DB + Redis count in {}ms", 
                         (System.nanoTime() - startTime) / 1000000);
                     return myJson;
                 }
@@ -93,16 +122,16 @@ public class OptimizedPublicApiService {
             
             // All services - direct DB query (this is usually cached at application level)
             List<Servico> servicoList = servicosRepository.findAll();
-            JSONObject myJson = new JSONObject();
-            JSONObject serviceMyJson = new JSONObject();
+            Map<String, Object> myJson = new HashMap<>();
+            Map<String, Object> serviceMyJson = new HashMap<>();
             
             for (Servico s : servicoList) {
-                JSONObject priceMyJson = new JSONObject();
+                Map<String, Object> priceMyJson = new HashMap<>();
                 priceMyJson.put("cost", s.getPrice());
                 priceMyJson.put("count", s.getTotalQuantity());
                 serviceMyJson.put(s.getAlias(), priceMyJson);
             }
-            myJson.put("" + country.get() + "", serviceMyJson);
+            myJson.put(country.get(), serviceMyJson);
             
             logger.debug("✅ getPrices (all) - {} services in {}ms", 
                 servicoList.size(), (System.nanoTime() - startTime) / 1000000);

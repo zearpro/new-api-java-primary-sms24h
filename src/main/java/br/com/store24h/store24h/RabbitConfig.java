@@ -57,6 +57,26 @@ public class RabbitConfig {
     }
 
     /**
+     * Compatibility queue: consumer listens to 'number-assignment-queue'
+     */
+    @Bean
+    public org.springframework.amqp.core.Queue numberAssignmentQueue() {
+        return org.springframework.amqp.core.QueueBuilder
+            .durable("number-assignment-queue")
+            .build();
+    }
+
+    /**
+     * Cache invalidation queue used by consumer
+     */
+    @Bean
+    public org.springframework.amqp.core.Queue cacheInvalidationQueue() {
+        return org.springframework.amqp.core.QueueBuilder
+            .durable("cache-invalidation-queue")
+            .build();
+    }
+
+    /**
      * Health check queue for monitoring
      */
     @Bean

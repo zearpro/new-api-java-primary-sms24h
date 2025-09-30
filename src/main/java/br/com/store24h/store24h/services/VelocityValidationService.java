@@ -106,7 +106,7 @@ public class VelocityValidationService {
 
                 try {
                     // Simulate getPrices call (should be very fast with caching)
-                    velocityApiService.getPricesVelocity(Optional.of("tg"), Optional.of("0"));
+                    velocityApiService.getPricesVelocity(Optional.of("tg"), Optional.of("0"), Optional.empty());
 
                 } catch (Exception e) {
                     // Expected for test API key
@@ -267,7 +267,7 @@ public class VelocityValidationService {
                             long startTime = System.nanoTime();
                             try {
                                 // Simulate getPrices call
-                                velocityApiService.getPricesVelocity(Optional.of("tg"), Optional.of("0"));
+                                velocityApiService.getPricesVelocity(Optional.of("tg"), Optional.of("0"), Optional.empty());
                                 successCount.incrementAndGet();
                             } catch (Exception e) {
                                 errorCount.incrementAndGet();

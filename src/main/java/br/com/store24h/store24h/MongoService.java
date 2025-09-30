@@ -50,12 +50,29 @@ public class MongoService {
     private ConfigurableEnvironment environment;
     Logger logger = LoggerFactory.getLogger(MongoService.class);
 
+    private boolean isBypassEnabled() {
+        try {
+            String bypass = System.getenv("MONGO_BYPASS");
+            return bypass != null && ("1".equals(bypass) || "true".equalsIgnoreCase(bypass));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     @PostConstruct
     public void createTTLIndex() {
+        if (isBypassEnabled()) {
+            // Skip TTL index creation when bypassing Mongo in hot paths
+            return;
+        }
         this.mongoTemplate.indexOps("numbers_to_callback").ensureIndex((IndexDefinition)new Index().on("createdAt", Sort.Direction.ASC).expire(Duration.ofHours(1L)));
     }
 
     public List<String> numerosComOServico(String servico) {
+        if (isBypassEnabled()) {
+            // When bypassing, pretend none were used so selection can proceed
+            return new ArrayList<>();
+        }
         Query query = new Query();
         this.logger.info("DEV_TESTE: buscando numeros que ja ativou o servico {} ", (Object)servico);
         query.addCriteria((CriteriaDefinition)Criteria.where((String)"servico").is((Object)servico));
@@ -69,6 +86,10 @@ public class MongoService {
     }
 
     public boolean possoUsar(String api_key, String numero, String servico) {
+        if (isBypassEnabled()) {
+            // Allow usage by default when bypassing Mongo
+            return false;
+        }
         boolean servicoAtivo;
         this.logger.info("DEV_TESTE: checando se o numero {} ja tem o servico ativo {} ", (Object)numero, (Object)servico);
         Query query = new Query();
@@ -93,6 +114,10 @@ public class MongoService {
     }
 
     public void bloqueiaNumeroServico(String api_key, String codigo, String numero, String servico) {
+        if (isBypassEnabled()) {
+            // No-op when bypass is enabled
+            return;
+        }
         HashMap<String, Object> new_config = new HashMap<String, Object>();
         new_config.put("codigo", codigo);
         new_config.put("api_key", api_key);
@@ -105,6 +130,10 @@ public class MongoService {
     }
 
     public List<ChipModel> numerosQueNaoForamUsadosNesseServico(List<ChipModel> numeroDisponivelList, String servico, int limite) {
+        if (isBypassEnabled()) {
+            // Return input list unchanged when bypassing Mongo filters
+            return numeroDisponivelList;
+        }
         ArrayList<String> numeroDisponiveArray = new ArrayList<String>();
         if (numeroDisponivelList.size() > limite) {
             Collections.shuffle(numeroDisponivelList);
@@ -127,6 +156,10 @@ public class MongoService {
     }
 
     public void insert(Map new_config) {
+        if (isBypassEnabled()) {
+            // No-op during bypass
+            return;
+        }
         this.mongoTemplate.insert((Object)new_config, "numbers_to_callback");
     }
 }

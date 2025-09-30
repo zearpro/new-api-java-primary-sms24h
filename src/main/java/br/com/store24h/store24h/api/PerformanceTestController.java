@@ -245,7 +245,7 @@ public class PerformanceTestController {
 
         // Warm up user cache (simulate)
         try {
-            optimizedApiService.getPricesOptimized(Optional.of(service), Optional.of(country));
+            optimizedApiService.getPricesOptimized(Optional.of(service), Optional.of(country), Optional.empty());
         } catch (Exception e) {
             // Expected for test scenarios
         }
@@ -305,7 +305,7 @@ public class PerformanceTestController {
             try {
                 // Test Velocity API
                 long startTime = System.nanoTime();
-                velocityApiService.getPricesVelocity(Optional.of(service), Optional.of(country));
+                velocityApiService.getPricesVelocity(Optional.of(service), Optional.of(country), Optional.empty());
                 long duration = (System.nanoTime() - startTime) / 1000000;
                 velocityLatencies.add(duration);
 
@@ -378,7 +378,7 @@ public class PerformanceTestController {
                         long startTime = System.nanoTime();
                         try {
                             if ("velocity".equals(apiType)) {
-                                velocityApiService.getPricesVelocity(Optional.of("ki"), Optional.of("73"));
+                                velocityApiService.getPricesVelocity(Optional.of("ki"), Optional.of("73"), Optional.empty());
                             } else {
                                 originalApiService.getPrices(Optional.of("ki"), Optional.of("73"), Optional.empty());
                             }

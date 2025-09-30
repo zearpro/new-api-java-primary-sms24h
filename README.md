@@ -1,3 +1,65 @@
+## Store24h API - Current Architecture & Operations
+
+This document summarizes the current setup after the performance rework.
+
+### Components
+- Java API (Spring Boot): core business logic, write paths, background jobs
+- Redis: primary read datastore for hot paths (numbers, counts, user cache, activations mirror)
+- RabbitMQ: async persistence and cache invalidations
+- Hono.js Accelerator (Bun): ultra-fast read endpoints (optional)
+- MySQL (RDS in prod): system of record written asynchronously
+
+### Redis Keys (conventions)
+- `available_numbers:{service}:{country}:{operator}`: Set of available numbers
+- `used_numbers:{service}`: Set of assigned numbers (per service)
+- `pool_count:{service}:{country}:{operator}`: Precomputed available count
+- `activation:{activationId}`: Hash with activation status (mirror)
+- `confirmed:{service}:{number}:{country}:{operator}`: Reservation confirmation
+
+All `operator`, `service`, `alias_service`, and `country` values used in keys/logs are normalized to lowercase. Countries are numeric strings.
+
+### Schedulers & Warmup
+- v_operadoras: refresh cache every 5 minutes
+- chip_number_control (persistent):
+  - Incremental (2 min): ingest new rows by id DESC
+  - Reconcile (15 min): small window to heal drift, reindex counts
+- chip_number_control_alias_service (persistent):
+  - Incremental (2 min): ingest new rows by created DESC
+  - Reconcile (15 min): small window to heal drift
+- Additional: services/users/numbers warmers at 2–3–15 minutes as configured in `application.properties`
+
+Rules:
+- Redis is the source of truth for reads on these tables. MySQL is only for writes and background sync.
+- Incremental tasks only add missing newer rows; reconcile tasks are bounded small windows and do not wipe Redis.
+
+### RedisSetService “Swapped pool” log
+Format: `🔁 s.RedisSetService : Swapped pool for service {service}:{country}:{operator} with {N} numbers`
+- Indicates an atomic refresh of the available numbers pool for a given service/country/operator.
+- The values are lowercase (e.g., `wa:73:oi`).
+- Example: `wa:73:oi with 10000 numbers` means the new available set has 10,000 entries.
+- This complements warmup: warmers compute the new pool, then `populateAvailablePoolSwap` atomically replaces it.
+
+### Dev/Prod Configuration
+- `.env.dev`: local MySQL/Redis and dev flags
+- `.env`: production RDS URL and prod flags
+- Docker compose files orchestrate API, Redis, RabbitMQ, and Accelerator.
+
+### Build & Run (dev)
+```bash
+mvn clean package -DskipTests
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml --env-file .env.dev up -d --build
+```
+
+### Logs & Benchmark
+```bash
+docker logs -f store24h-api-dev
+./benchmark.sh  # set API_KEY first
+```
+
+### Notes
+- Operator/service/alias_service must always be lowercase across logs and keys.
+- getNumber/getPrices/getBalance/getExtraActivation read from Redis; MySQL is bypassed in read paths.
+
 # Store24h High-Performance SMS API
 
 [![Java](https://img.shields.io/badge/Java-17-orange.svg)](https://www.oracle.com/java/)

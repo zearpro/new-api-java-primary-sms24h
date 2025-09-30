@@ -54,6 +54,9 @@ services:
     environment:
       - SPRING_PROFILES_ACTIVE=docker
       - LISTEN_PORT=80
+      - IS_SMSHUB=true
+      - VELOCITY_ENABLED=true
+      - MONGO_BYPASS=true
       
       # External MySQL Database settings
       - MYSQL_HOST=${MYSQL_HOST}

@@ -3,8 +3,10 @@ package br.com.store24h.store24h.services;
 import br.com.store24h.store24h.apiv2.TipoDeApiEnum;
 import br.com.store24h.store24h.apiv2.exceptions.ApiKeyNotFoundException;
 import br.com.store24h.store24h.model.Servico;
+import br.com.store24h.store24h.model.ChipModel;
 import br.com.store24h.store24h.model.User;
 import br.com.store24h.store24h.repository.ServicosRepository;
+import br.com.store24h.store24h.repository.ChipRepository;
 import br.com.store24h.store24h.services.core.TipoDeApiNotPermitedException;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
@@ -57,6 +59,9 @@ public class VelocityApiService {
 
     @Autowired
     private ServicosRepository servicosRepository;
+
+    @Autowired
+    private ChipRepository chipRepository;
 
     // Performance metrics
     @Autowired(required = false)
@@ -168,7 +173,9 @@ public class VelocityApiService {
             logger.error("❌ Unexpected error in getNumberVelocity", e);
             return "ERROR_SQL";
         } finally {
-            sample.stop(getNumberTimer);
+            if (getNumberTimer != null) {
+                sample.stop(getNumberTimer);
+            }
         }
     }
 
@@ -176,12 +183,12 @@ public class VelocityApiService {
      * Optimized getPrices with full Redis caching
      * Uses existing OptimizedPublicApiService implementation
      */
-    public Object getPricesVelocity(Optional<String> service, Optional<String> country) {
+    public Object getPricesVelocity(Optional<String> service, Optional<String> country, Optional<String> operator) {
         Timer.Sample sample = Timer.start(meterRegistry);
 
         try {
             incrementCounter(cacheHitCounter); // Assume cache hit for optimized service
-            return optimizedApiService.getPricesOptimized(service, country);
+            return optimizedApiService.getPricesOptimized(service, country, operator);
 
         } catch (Exception e) {
             incrementCounter(cacheMissCounter);
@@ -190,7 +197,9 @@ public class VelocityApiService {
             // Fallback to database
             return fallbackGetPrices(service, country);
         } finally {
-            sample.stop(getPricesTimer);
+            if (getPricesTimer != null) {
+                sample.stop(getPricesTimer);
+            }
         }
     }
 
@@ -236,13 +245,36 @@ public class VelocityApiService {
      */
     private void warmUpPoolAndRetry(String operator, String service, String country) {
         try {
-            // Trigger immediate cache warming for this specific pool
             logger.debug("🔥 Attempting pool warm-up for {}:{}:{}", operator, service, country);
-            // This would trigger CacheWarmingService to populate this specific pool
-            // For now, just log the attempt
+
+            // Fetch a small batch of candidate numbers from DB to seed Redis pool
+            // Prefer operator+country filtered queries; fallback to country-only
+            java.util.List<ChipModel> candidates;
+            if (operator != null && !operator.equalsIgnoreCase("any")) {
+                try {
+                    candidates = chipRepository.findByCountryAndAlugadoAndAtivoAndOperadora(country, false, true, operator);
+                } catch (Exception ex) {
+                    candidates = chipRepository.findByCountryAndAlugadoAndAtivo(country, false, true);
+                }
+            } else {
+                candidates = chipRepository.findByCountryAndAlugadoAndAtivo(country, false, true);
+            }
+
+            java.util.Set<String> numbers = new java.util.HashSet<>();
+            int limit = Math.min(candidates.size(), 200);
+            for (int i = 0; i < limit; i++) {
+                numbers.add(candidates.get(i).getNumber());
+            }
+
+            if (!numbers.isEmpty()) {
+                redisSetService.populateAvailablePool(operator, service, country, numbers);
+                logger.debug("✅ Warmed {} numbers for pool {}:{}:{}", numbers.size(), operator, service, country);
+            } else {
+                logger.debug("⚠️ No candidates found to warm pool {}:{}:{}", operator, service, country);
+            }
 
         } catch (Exception e) {
-            logger.debug("⚠️ Pool warm-up failed for {}:{}:{}", operator, service, country);
+            logger.debug("⚠️ Pool warm-up failed for {}:{}:{}", operator, service, country, e);
         }
     }
 

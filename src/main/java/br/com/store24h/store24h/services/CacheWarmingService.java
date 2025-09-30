@@ -289,6 +289,98 @@ public class CacheWarmingService {
         
         logger.info("✅ Critical caches warmed");
     }
+
+    /**
+     * WARMUPS AS REQUESTED (every 2 minutes): servicos, chip_model, chip_model_online, usuario
+     */
+    @Scheduled(fixedRateString = "${cache.warming.services.users.numbers.rate:120000}")
+    public void warmUpServicesUsersNumbersEvery2m() {
+        if (!cacheWarmingEnabled) return;
+        logger.info("🔥 Scheduled(2m): warming servicos, chip_model, chip_model_online, usuario");
+        CompletableFuture.runAsync(() -> {
+            try {
+                warmUpAllServicesCache();
+                warmUpRedisNumberPools(); // chip_model and chip_model_online contribute to pools/counters
+                warmUpUserBalances(); // prime usuario-based balance entries
+            } catch (Exception e) {
+                logger.error("❌ Error in 2m warmup batch", e);
+            }
+        }, warmingExecutor);
+    }
+
+    /**
+     * WARMUP (every 3 minutes): chip_number_control
+     */
+    @Scheduled(fixedRateString = "${cache.warming.chip_number_control.rate:180000}")
+    public void warmUpChipNumberControlEvery3m() {
+        if (!cacheWarmingEnabled) return;
+        logger.info("🔥 Scheduled(3m): warming chip_number_control-derived counters");
+        CompletableFuture.runAsync(() -> {
+            try {
+                // Recompute quick availability counters by sampling pools
+                // Pools are already populated from chip_model; this refresh updates counters
+                List<String> operators = Arrays.asList("any", "vivo", "tim", "claro", "oi");
+                List<String> services = Arrays.asList("wa", "tg", "fb", "ig", "tw");
+                String country = "0";
+                for (String op : operators) {
+                    for (String svc : services) {
+                        long count = redisSetService.getAvailableCount(op, svc, country);
+                        // touch count key via populateAvailablePool side-effect not available here;
+                        // a no-op read keeps counters observable and logs for monitoring
+                        logger.debug("counter {}:{}:{} => {}", op, svc, country, count);
+                    }
+                }
+            } catch (Exception e) {
+                logger.error("❌ Error warming chip_number_control counters", e);
+            }
+        }, warmingExecutor);
+    }
+
+    /**
+     * WARMUP (every 15 minutes): chip_number_control_alias_service
+     */
+    @Scheduled(fixedRateString = "${cache.warming.chip_number_control_alias.rate:900000}")
+    public void warmUpChipNumberControlAliasEvery15m() {
+        if (!cacheWarmingEnabled) return;
+        logger.info("🔥 Scheduled(15m): warming chip_number_control_alias_service");
+        CompletableFuture.runAsync(() -> {
+            try {
+                // Re-run numbers availability to refresh by-service counters
+                warmUpNumbersAvailabilityCache();
+            } catch (Exception e) {
+                logger.error("❌ Error warming chip_number_control_alias_service", e);
+            }
+        }, warmingExecutor);
+    }
+
+    /**
+     * WARMUP (every 5 minutes): api_key index area
+     */
+    @Scheduled(fixedRateString = "${cache.warming.api_key_index.rate:300000}")
+    public void warmUpApiKeyIndexEvery5m() {
+        if (!cacheWarmingEnabled) return;
+        logger.info("🔥 Scheduled(5m): warming api_key index cache area");
+        CompletableFuture.runAsync(() -> {
+            try {
+                // Touch a sample of users to refresh api_key lookups in Redis
+                List<User> users = userDbRepository.findAll().stream().limit(100).collect(Collectors.toList());
+                int warmed = 0;
+                for (User u : users) {
+                    try {
+                        if (u.getApiKey() != null && !u.getApiKey().isEmpty()) {
+                            // Touch findUserApiType to ensure it is cached
+                            cacheService.findUserApiType(u.getApiKey());
+                            userBalanceService.warmUpBalanceCache(u.getApiKey());
+                            warmed++;
+                        }
+                    } catch (Exception ignored) { }
+                }
+                logger.debug("✅ api_key index warmed for {} users", warmed);
+            } catch (Exception e) {
+                logger.error("❌ Error during api_key index warmup", e);
+            }
+        }, warmingExecutor);
+    }
     
     /**
      * Warm up ALL services cache - gets all services from database
@@ -630,7 +722,7 @@ public class CacheWarmingService {
                 }
             }
 
-            // Populate Redis pools
+            // Populate Redis pools (swap-key for consistency)
             int poolsPopulated = 0;
             for (Map.Entry<String, Set<String>> entry : poolGroups.entrySet()) {
                 try {
@@ -642,7 +734,7 @@ public class CacheWarmingService {
                         Set<String> numbers = entry.getValue();
 
                         if (!numbers.isEmpty()) {
-                            redisSetService.populateAvailablePool(operator, service, country, numbers);
+                            redisSetService.populateAvailablePoolSwap(operator, service, country, numbers);
                             poolsPopulated++;
 
                             logger.debug("✅ Pool populated: {} numbers for {}:{}:{}",

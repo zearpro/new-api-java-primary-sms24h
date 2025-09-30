@@ -1,0 +1,31 @@
+{
+  "name": "store24h-accelerator",
+  "version": "1.0.0",
+  "description": "High-performance microservice for Store24h API hot paths",
+  "main": "index.js",
+  "scripts": {
+    "start": "bun run index.js",
+    "dev": "bun --watch index.js",
+    "build": "bun build index.js --outdir ./dist",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "hono": "^3.12.0",
+    "ioredis": "^5.3.2"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "keywords": [
+    "api",
+    "microservice",
+    "performance",
+    "redis",
+    "hono"
+  ],
+  "author": "Store24h Team",
+  "license": "MIT"
+}

@@ -41,6 +41,8 @@ import br.com.store24h.store24h.services.ChipNumberControlService;
 import br.com.store24h.store24h.services.CompraService;
 import br.com.store24h.store24h.services.OtherService;
 import br.com.store24h.store24h.services.SvsService;
+import br.com.store24h.store24h.services.RedisSetService;
+import br.com.store24h.store24h.services.VelocityApiService;
 import br.com.store24h.store24h.services.core.ActivationService;
 import br.com.store24h.store24h.services.core.ServicesHubService;
 import br.com.store24h.store24h.services.core.TipoDeApiNotPermitedException;
@@ -110,6 +112,12 @@ public class PublicApiService {
     private final ExecutorService executorService1 = new ThreadPoolExecutor(20, 60, 0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<Runnable>(5580), new ThreadPoolExecutor.AbortPolicy());
     private RedisService redisService;
 
+    @Autowired
+    private RedisSetService redisSetService;
+
+    @Autowired
+    private VelocityApiService velocityApiService;
+
     public String getBalancer(String api_key) {
         // Use cached balance service for much better performance
         return userBalanceService.getFormattedBalance(api_key);
@@ -131,6 +139,10 @@ public class PublicApiService {
     public String getNumber(String apiKey, Optional<String> service, Optional<String> operator, Optional<String> country, Optional<String> numero, int version, TipoDeApiEnum tipoDeApiEnum) throws ApiKeyNotFoundException, TipoDeApiNotPermitedException {
         Activation activation;
         long startTimeOperacao = System.nanoTime();
+        // Velocity fast path: use high-performance implementation when enabled
+        if (System.getenv("VELOCITY_ENABLED") != null) {
+            return velocityApiService.getNumberVelocity(apiKey, service, operator, country, numero, version, tipoDeApiEnum);
+        }
         if (System.getenv("NEW_GET_NUMBER_METHOD") != null) {
             long startTimeTrecho = System.nanoTime();
             NumerosService.NumeroServiceResponse resp = this.numerosService.getNumber(apiKey, service, operator, country, numero, version, tipoDeApiEnum);
@@ -500,6 +512,11 @@ public class PublicApiService {
         try {
             this.logger.debug("getPrices called with service:{} country:{} operator:{}", 
                 service.orElse("null"), country.orElse("null"), operator.orElse("null"));
+            
+            // Velocity fast path: use high-performance implementation when enabled
+            if (System.getenv("VELOCITY_ENABLED") != null) {
+                return velocityApiService.getPricesVelocity(service, country, operator);
+            }
                 
             if (service.isPresent()) {
                 // ✅ Single service request - using HashMap for proper JSON serialization
@@ -513,9 +530,18 @@ public class PublicApiService {
                     
                     // ✅ Keep same price from servicos table
                     priceMyJson.put("cost", s.getPrice());
-                    
-                    // ✅ Use simplified count for now - avoid slow calculation during migration
-                    priceMyJson.put("count", s.getTotalQuantity());
+
+                    // ✅ Prefer Redis pool count if operator and country provided; fallback to DB field
+                    if (operator.isPresent() && country.isPresent()) {
+                        try {
+                            long poolCount = redisSetService.getAvailableCount(operator.get(), s.getAlias(), country.get());
+                            priceMyJson.put("count", poolCount);
+                        } catch (Exception ex) {
+                            priceMyJson.put("count", s.getTotalQuantity());
+                        }
+                    } else {
+                        priceMyJson.put("count", s.getTotalQuantity());
+                    }
                     
                     // ✅ Use actual service alias as key (wa, tg, fb, etc.)
                     serviceMyJson.put(s.getAlias(), priceMyJson);
