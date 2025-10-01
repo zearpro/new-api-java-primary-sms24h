@@ -85,3 +85,4 @@ src/test/
 
 # Maven wrapper (if not needed in container)
 .mvn/wrapper/maven-wrapper.jar
+
