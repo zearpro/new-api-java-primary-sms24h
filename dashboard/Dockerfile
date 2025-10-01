@@ -8,8 +8,15 @@ COPY package*.json ./
 # Install dependencies
 RUN npm install
 
-# Copy all source files
-COPY . .
+# Copy public directory first to ensure it's available
+COPY public ./public
+
+# Copy source files
+COPY src ./src
+
+# Copy config files
+COPY tailwind.config.js ./
+COPY postcss.config.js ./
 
 # Build the app
 RUN npm run build

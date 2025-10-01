@@ -1,97 +1,171 @@
+version: '3.8'
+
 services:
-  # Redis Service for Development
-  redis:
-    image: redis:7-alpine
-    container_name: store24h-redis-dev
+  # Dragonfly Service - High Performance Redis Alternative
+  dragonfly:
+    image: docker.dragonflydb.io/dragonflydb/dragonfly:latest
+    container_name: store24h-dragonfly
     ports:
       - "6379:6379"
     command: >
-      redis-server 
-      --appendonly yes 
-      --requirepass ${REDIS_PASSWORD:-store24h_redis_pass}
-      --maxmemory 512mb
-      --maxmemory-policy allkeys-lru
+      --maxmemory=2gb
+      --logtostderr
+      --v=1
     volumes:
-      - redis_data_dev:/data
+      - dragonfly_data:/data
     networks:
-      - app-network-dev
+      - app-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
 
-  # RabbitMQ Service for Development
+  # RabbitMQ Message Queue
   rabbitmq:
     image: rabbitmq:3.12-management-alpine
-    container_name: store24h-rabbitmq-dev
-    hostname: rabbitmq
+    container_name: store24h-rabbitmq
     ports:
-      - "5672:5672"   # AMQP port
-      - "15672:15672" # Management UI port
+      - "5672:5672"
+      - "15672:15672"
     environment:
-      - RABBITMQ_DEFAULT_USER=guesta
-      - RABBITMQ_DEFAULT_PASS=guesta
-      - RABBITMQ_DEFAULT_VHOST=/
+      - RABBITMQ_DEFAULT_USER=admin
+      - RABBITMQ_DEFAULT_PASS=admin123
     volumes:
-      - rabbitmq_data_dev:/var/lib/rabbitmq
+      - rabbitmq_data:/var/lib/rabbitmq
     networks:
-      - app-network-dev
+      - app-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
 
-  # Main Application Service for Development
-  store24h-api:
-    container_name: store24h-api-dev
-    build:
-      context: .
-      dockerfile: Dockerfile # We can use the same Dockerfile as it contains the build environment
-    command: mvn spring-boot:run -Dspring-boot.run.jvmArguments="-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=*:5005"
-    volumes:
-      - ./src:/app/src
-      - ./pom.xml:/app/pom.xml
-      - maven-repo:/root/.m2
+  # Beautiful React Dashboard
+  dashboard:
+    build: ./dashboard
+    container_name: store24h-dashboard
     ports:
-      - "${LISTEN_PORT:-80}:80"
-      - "5005:5005" # Expose debug port
+      - "3000:3000"
     environment:
-      - SPRING_PROFILES_ACTIVE=docker
-      - LISTEN_PORT=80
-      - IS_SMSHUB=true
-      - VELOCITY_ENABLED=true
-      - MONGO_BYPASS=true
-      
-      # External MySQL Database settings
+      - REACT_APP_API_URL=http://store24h-api:80
+      - REACT_APP_DRAGONFLY_URL=dragonfly://dragonfly:6379
+      - REACT_APP_DASHBOARD_TITLE=Store24h Warmup Dashboard
+      - REACT_APP_DASHBOARD_SUBTITLE=Dragonfly Performance Monitor
+    depends_on:
+      store24h-api:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Hono.js Accelerator Microservice
+  hono-accelerator:
+    build: ./hono-accelerator
+    container_name: store24h-hono-accelerator
+    ports:
+      - "3001:3000"
+    environment:
+      - PORT=3000
+      - DRAGONFLY_HOST=dragonfly
+      - DRAGONFLY_PORT=6379
+    depends_on:
+      dragonfly:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Main Application Service
+  store24h-api:
+    build: .
+    container_name: store24h-api
+    ports:
+      - "80:80" # Map container port 80 to host port 80
+    environment:
+      # Database Configuration
       - MYSQL_HOST=${MYSQL_HOST}
-      - MYSQL_PORT=${MYSQL_PORT}
       - MYSQL_USER=${MYSQL_USER}
       - MYSQL_PASSWORD=${MYSQL_PASSWORD}
       - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - MYSQL_PORT=${MYSQL_PORT:-3306}
       
-      # External MongoDB settings
+      # MongoDB Configuration
       - MONGO_URL=${MONGO_URL}
-
-      # Redis Container settings
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-store24h_redis_pass}
-
-      # Database configuration - allow DDL updates for development
-      - HIBERNATE_DDL_AUTO=update
       
-      # RabbitMQ configuration
-      - RABBITMQ_HOST=rabbitmq
+      # Dragonfly Container settings (High Performance Redis Alternative)
+      - DRAGONFLY_HOST=dragonfly
+      - DRAGONFLY_PORT=6379
+      - DRAGONFLY_PASSWORD=
       
-      # Cache warming configuration
+      # Cache warming configuration - Aggressive intervals for t3.2xlarge
       - CACHE_WARMING_ENABLED=${CACHE_WARMING_ENABLED:-true}
+      - CACHE_WARMING_CHIP_MODEL_ONLINE_RATE=${CACHE_WARMING_CHIP_MODEL_ONLINE_RATE:-30000}
+      - CACHE_WARMING_CHIP_MODEL_RATE=${CACHE_WARMING_CHIP_MODEL_RATE:-30000}
+      - CACHE_WARMING_SMS_MODEL_RATE=${CACHE_WARMING_SMS_MODEL_RATE:-30000}
+      - CACHE_WARMING_SMS_STRING_MODEL_RATE=${CACHE_WARMING_SMS_STRING_MODEL_RATE:-30000}
+      - CACHE_WARMING_SERVICOS_RATE=${CACHE_WARMING_SERVICOS_RATE:-60000}
+      - CACHE_WARMING_CHIP_NUMBER_CONTROL_RATE=${CACHE_WARMING_CHIP_NUMBER_CONTROL_RATE:-60000}
+      - CACHE_WARMING_V_OPERADORAS_RATE=${CACHE_WARMING_V_OPERADORAS_RATE:-60000}
+      - CACHE_WARMING_USERS_RATE=${CACHE_WARMING_USERS_RATE:-120000}
+      - CACHE_WARMING_NUMBERS_RATE=${CACHE_WARMING_NUMBERS_RATE:-120000}
+      - CACHE_WARMING_CONFIGS_RATE=${CACHE_WARMING_CONFIGS_RATE:-120000}
+      - CACHE_WARMING_BALANCE_RATE=${CACHE_WARMING_BALANCE_RATE:-300000}
+      - CACHE_WARMING_OPERATORS_RATE=${CACHE_WARMING_OPERATORS_RATE:-120000}
+      
+      # Performance tuning for development
+      - TOMCAT_MAX_THREADS=${TOMCAT_MAX_THREADS:-200}
+      - TOMCAT_ACCEPT_COUNT=${TOMCAT_ACCEPT_COUNT:-1000}
+      - TOMCAT_MIN_SPARE_THREADS=${TOMCAT_MIN_SPARE_THREADS:-50}
+      - TOMCAT_MAX_CONNECTIONS=${TOMCAT_MAX_CONNECTIONS:-10000}
+      - ASYNC_EXECUTOR_CORE_POOL_SIZE=${ASYNC_EXECUTOR_CORE_POOL_SIZE:-50}
+      - ASYNC_EXECUTOR_MAX_POOL_SIZE=${ASYNC_EXECUTOR_MAX_POOL_SIZE:-100}
+      - ASYNC_EXECUTOR_QUEUE_CAPACITY=${ASYNC_EXECUTOR_QUEUE_CAPACITY:-1000}
+      - ASYNC_EXECUTOR_THREAD_NAME_PREFIX=${ASYNC_EXECUTOR_THREAD_NAME_PREFIX:-WarmupThread-}
+      - TOMCAT_THREADS_MAX=${TOMCAT_THREADS_MAX:-200}
+      - TOMCAT_THREADS_MIN_SPARE=${TOMCAT_THREADS_MIN_SPARE:-50}
+      - HIKARI_MINIMUM_IDLE=${HIKARI_MINIMUM_IDLE:-10}
+      
+      # Application Configuration
+      - LISTEN_PORT=80
+      - SPRING_PROFILES_ACTIVE=docker
     depends_on:
-      - redis
-      - rabbitmq
+      dragonfly:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
     networks:
-      - app-network-dev
+      - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
 volumes:
-  maven-repo:
-  redis_data_dev:
+  dragonfly_data:
     driver: local
-  rabbitmq_data_dev:
+  rabbitmq_data:
     driver: local
 
 networks:
-  app-network-dev:
+  app-network:
     driver: bridge
