@@ -17,8 +17,14 @@ if [ "$EUID" -eq 0 ]; then
     DOCKER_CMD="docker"
     DOCKER_COMPOSE_CMD="docker-compose"
 else
-    DOCKER_CMD="sudo docker"
-    DOCKER_COMPOSE_CMD="sudo docker-compose"
+    # Check if docker works without sudo
+    if docker ps &> /dev/null; then
+        DOCKER_CMD="docker"
+        DOCKER_COMPOSE_CMD="docker-compose"
+    else
+        DOCKER_CMD="sudo docker"
+        DOCKER_COMPOSE_CMD="sudo docker-compose"
+    fi
 fi
 
 # Check if .env file exists
