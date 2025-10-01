@@ -33,6 +33,7 @@ import br.com.store24h.store24h.repository.ChipRepository;
 import br.com.store24h.store24h.repository.UserDbRepository;
 import br.com.store24h.store24h.services.ChipNumberControlService;
 import br.com.store24h.store24h.services.CompraService;
+import br.com.store24h.store24h.services.CountryOperatoraCacheService;
 import br.com.store24h.store24h.services.OtherService;
 import br.com.store24h.store24h.services.core.ActivationService;
 import br.com.store24h.store24h.services.core.ServicesHubService;
@@ -96,6 +97,8 @@ public class NumerosService {
     private CacheManager cacheManager;
     @Autowired
     private SmsReplicateService smsReplicateService;
+    @Autowired
+    private CountryOperatoraCacheService countryOperatoraCacheService;
     @Autowired
     private UserDbRepository userDbRepository;
     Executor executor = Executors.newFixedThreadPool(10);
@@ -177,6 +180,14 @@ public class NumerosService {
         if (country.get().isEmpty() || Double.parseDouble(country.get()) <= 0) {
             return new NumeroServiceResponse(NumerosServiceResponseErrorEnum.NO_NUMBERS);
         }
+        
+        // ✅ STRICT country+operator validation using chip_model table
+        if (country.isPresent() && operator.isPresent()) {
+            if (!countryOperatoraCacheService.isValidCombination(country.get(), operator.get())) {
+                return new NumeroServiceResponse(NumerosServiceResponseErrorEnum.BAD_SERVICE);
+            }
+        }
+        
         Servico serviceCache = this.cacheService.getServiceCache(service.get());
         if (serviceCache == null || !serviceCache.isActivity()) {
             return new NumeroServiceResponse(NumerosServiceResponseErrorEnum.BAD_SERVICE);
