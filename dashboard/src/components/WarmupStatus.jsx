@@ -7,11 +7,7 @@ import {
   AlertTriangle, 
   CheckCircle, 
   Clock,
-  TrendingUp,
-  Server,
-  Cpu,
-  HardDrive,
-  Wifi
+  HardDrive
 } from 'lucide-react';
 
 export function WarmupStatus({ data }) {

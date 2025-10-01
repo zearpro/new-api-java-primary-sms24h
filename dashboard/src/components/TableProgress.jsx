@@ -5,8 +5,7 @@ import {
   AlertTriangle, 
   CheckCircle, 
   Clock,
-  Star,
-  TrendingUp
+  Star
 } from 'lucide-react';
 
 const PRIORITY_TABLES = [

@@ -2,14 +2,9 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { 
   Database, 
-  Zap, 
-  Activity, 
   AlertTriangle, 
   CheckCircle, 
-  Clock,
   TrendingUp,
-  Server,
-  Cpu,
   HardDrive
 } from 'lucide-react';
 

@@ -4,7 +4,6 @@ import {
   RefreshCw, 
   Trash2, 
   Play, 
-  AlertTriangle,
   CheckCircle,
   Loader
 } from 'lucide-react';

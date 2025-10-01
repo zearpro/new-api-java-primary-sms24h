@@ -3,17 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Toaster } from 'react-hot-toast'
 import {
 	Database,
-	Zap,
-	Activity,
 	RefreshCw,
-	AlertTriangle,
-	CheckCircle,
 	Clock,
-	TrendingUp,
-	Server,
-	Cpu,
-	HardDrive,
-	Wifi,
 } from 'lucide-react'
 
 import { WarmupStatus } from './components/WarmupStatus'
