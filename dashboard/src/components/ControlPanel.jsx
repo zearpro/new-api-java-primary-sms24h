@@ -18,7 +18,7 @@ export function ControlPanel({ onRefresh }) {
   });
 
   const handleResetRedis = async () => {
-    if (!confirm('⚠️ This will reset ALL Dragonfly data and reseed from MySQL. Are you sure?')) return;
+    if (!window.confirm('⚠️ This will reset ALL Dragonfly data and reseed from MySQL. Are you sure?')) return;
     
     setLoading(prev => ({ ...prev, reset: true }));
     try {
