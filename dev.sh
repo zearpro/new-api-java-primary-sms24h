@@ -3,9 +3,10 @@
 # Exit immediately if a command exits with a non-zero status.
 set -e
 
-echo " MODO DESENVOLVEDOR "
+echo "🚀 MODO DESENVOLVEDOR - Dragonfly Performance Edition"
 echo "Iniciando todos os serviços em modo de desenvolvimento..."
 echo "As alterações nos arquivos Java serão aplicadas em tempo real."
+echo "Dashboard disponível em: http://localhost:3000"
 echo "Pressione Ctrl+C para parar todos os contêineres."
 
 # Define the environment file for development
@@ -18,9 +19,27 @@ if [ ! -f "$ENV_FILE" ]; then
     cp .env.example "$ENV_FILE"
 fi
 
-# Start docker-compose with the correct env file and dev override.
-# The command will attach to the logs of the services.
-docker-compose -f docker-compose.yml -f docker-compose.dev.yml --env-file "$ENV_FILE" up --build
+# Check if Docker is running
+if ! docker ps &> /dev/null; then
+    echo "❌ Docker não está rodando. Por favor, inicie o Docker primeiro."
+    exit 1
+fi
+
+# Clean up any existing containers
+echo "🧹 Limpando contêineres existentes..."
+docker-compose down --remove-orphans || true
+
+# Build and start all services with Dragonfly and Dashboard
+echo "🔨 Construindo e iniciando todos os serviços..."
+echo "📊 Serviços incluídos:"
+echo "  - DragonflyDB (Redis alternativo de alta performance)"
+echo "  - Store24h API (Spring Boot)"
+echo "  - Dashboard React (Monitoramento em tempo real)"
+echo "  - RabbitMQ (Message Queue)"
+echo "  - Hono.js Accelerator"
+
+# Start docker-compose with the correct env file
+docker-compose --env-file "$ENV_FILE" up --build
 
 # Optional: Add a trap to ensure containers are stopped on exit
-trap "echo 'Parando contêineres...'; docker-compose -f docker-compose.yml -f docker-compose.dev.yml --env-file '$ENV_FILE' down; exit" INT TERM
+trap "echo '🛑 Parando contêineres...'; docker-compose --env-file '$ENV_FILE' down; exit" INT TERM

@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# Production deployment script for AWS EC2
-# This script builds and deploys the Store24h API
+# Production deployment script for AWS EC2 with Dragonfly Performance Edition
+# This script builds and deploys the Store24h API with DragonflyDB and Dashboard
 # FORCES 100% FRESH BUILD - Deletes all images and rebuilds from scratch
 
 set -e
 
-echo "🚀 Starting Store24h API deployment on EC2..."
+echo "🚀 Starting Store24h API deployment with Dragonfly Performance Edition on EC2..."
 
 # Guard: never run on macOS (local dev). This script is for Ubuntu EC2 only.
 OS_NAME=$(uname -s)
@@ -72,20 +72,20 @@ set -o allexport
 source <(grep -v '^#' .env | grep -v '^JAVA_OPTS' | grep -v '^\s*$' | sed 's/[[:space:]]*=[[:space:]]*/=/g')
 set +o allexport
 
-# Control infra rebuild (redis/rabbitmq) via env flag
+# Control infra rebuild (dragonfly/rabbitmq) via env flag
 REBUILD_INFRA=${REBUILD_INFRA:-false}
 
-# Do NOT stop Redis/RabbitMQ by default. Only rebuild app services.
-echo "🛑 Stopping/recreating only application services (store24h-api, hono-accelerator)..."
-$DOCKER_COMPOSE_CMD stop store24h-api hono-accelerator || true
+# Do NOT stop Dragonfly/RabbitMQ by default. Only rebuild app services.
+echo "🛑 Stopping/recreating only application services (store24h-api, hono-accelerator, dashboard)..."
+$DOCKER_COMPOSE_CMD stop store24h-api hono-accelerator dashboard || true
 
-# FORCE DELETE ALL JAVA IMAGES - 100% Fresh Build
-echo "🗑️ FORCE DELETING all Java application images..."
-$DOCKER_CMD images | grep -E "(store24h|api-ecr-extracted)" | awk '{print $3}' | xargs -r $DOCKER_CMD rmi -f || true
+# FORCE DELETE ALL APPLICATION IMAGES - 100% Fresh Build
+echo "🗑️ FORCE DELETING all application images..."
+$DOCKER_CMD images | grep -E "(store24h|api-ecr-extracted|dashboard)" | awk '{print $3}' | xargs -r $DOCKER_CMD rmi -f || true
 
 # FORCE DELETE ALL IMAGES WITH SAME NAME PATTERN
 echo "🗑️ FORCE DELETING images by name pattern..."
-$DOCKER_CMD images | grep -E "(api-ecr-extracted|store24h-api)" | awk '{print $1":"$2}' | xargs -r $DOCKER_CMD rmi -f || true
+$DOCKER_CMD images | grep -E "(api-ecr-extracted|store24h-api|store24h-dashboard)" | awk '{print $1":"$2}' | xargs -r $DOCKER_CMD rmi -f || true
 
 # Clean up ALL unused images and build cache
 echo "🧹 AGGRESSIVE cleanup of ALL Docker images and build cache..."
@@ -96,7 +96,7 @@ $DOCKER_CMD builder prune -a -f || true
 echo "🗑️ Removing existing target directory to force fresh JAR build..."
 rm -rf target/ || true
 
-# Build application images with FORCE NO-CACHE (does not affect redis/rabbitmq)
+# Build application images with FORCE NO-CACHE (does not affect dragonfly/rabbitmq)
 echo "🔨 FORCE BUILDING application images from scratch (100% fresh)..."
 echo "⏱️ Setting build timeout to 30 minutes to prevent context cancellation..."
 
@@ -132,28 +132,34 @@ while [ $BUILD_ATTEMPTS -lt $MAX_ATTEMPTS ]; do
     fi
 done
 
+# Build dashboard using direct docker build
+echo "🔨 Building dashboard using direct docker build..."
+cd dashboard
+timeout 600 $DOCKER_CMD build --no-cache --pull -t store24h-dashboard .
+cd ..
+
 # Build hono-accelerator using direct docker build
 echo "🔨 Building hono-accelerator using direct docker build..."
 cd hono-accelerator
 timeout 600 $DOCKER_CMD build --no-cache --pull -t hono-accelerator .
 cd ..
 
-# Ensure Redis and RabbitMQ are running (start if not running)
-echo "🔧 Ensuring Redis and RabbitMQ are running..."
-$DOCKER_COMPOSE_CMD up -d redis rabbitmq || true
+# Ensure Dragonfly and RabbitMQ are running (start if not running)
+echo "🔧 Ensuring Dragonfly and RabbitMQ are running..."
+$DOCKER_COMPOSE_CMD up -d dragonfly rabbitmq || true
 
 # Optionally refresh infra if explicitly requested
 if [ "$REBUILD_INFRA" = "true" ]; then
-    echo "🏗️ REBUILD_INFRA=true -> Rebuilding Redis and RabbitMQ..."
-    $DOCKER_COMPOSE_CMD pull redis rabbitmq || true
-    $DOCKER_COMPOSE_CMD up -d --force-recreate redis rabbitmq || true
+    echo "🏗️ REBUILD_INFRA=true -> Rebuilding Dragonfly and RabbitMQ..."
+    $DOCKER_COMPOSE_CMD pull dragonfly rabbitmq || true
+    $DOCKER_COMPOSE_CMD up -d --force-recreate dragonfly rabbitmq || true
 else
-    echo "ℹ️ Redis/RabbitMQ are running (preserving data). Set REBUILD_INFRA=true to rebuild."
+    echo "ℹ️ Dragonfly/RabbitMQ are running (preserving data). Set REBUILD_INFRA=true to rebuild."
 fi
 
 # Start/recreate application services
 echo "🚀 Starting application services..."
-$DOCKER_COMPOSE_CMD --env-file .env up -d --no-deps store24h-api hono-accelerator
+$DOCKER_COMPOSE_CMD --env-file .env up -d --no-deps store24h-api hono-accelerator dashboard
 
 # Wait for the application to start with better health checking
 echo "⏳ Waiting for application to start..."
@@ -175,19 +181,33 @@ while [ $WAIT_TIME -lt $MAX_WAIT ]; do
     WAIT_TIME=$((WAIT_TIME + 10))
 done
 
+# Check dashboard health
+echo "📊 Checking dashboard health..."
+if $DOCKER_COMPOSE_CMD ps dashboard | grep -q "Up"; then
+    if curl -f -s "http://localhost:3000" > /dev/null 2>&1; then
+        echo "✅ Dashboard is running and accessible!"
+    else
+        echo "⚠️ Dashboard container is up but not responding on port 3000"
+    fi
+else
+    echo "⚠️ Dashboard container is not running"
+fi
+
 # Final status check
 if $DOCKER_COMPOSE_CMD ps store24h-api | grep -q "Up"; then
     echo "✅ Application containers are running!"
     echo "🌐 Application URL: http://localhost:$PORT"
+    echo "📊 Dashboard URL: http://localhost:3000"
+    echo "⚡ Accelerator URL: http://localhost:3001"
     echo "🔍 Health check: http://localhost:$PORT/actuator/health"
-    echo "📚 API docs: http://localhost:$PORT/docs/"
+    echo "🔥 Warmup status: http://localhost:$PORT/api/warmup/status"
     echo ""
     echo "📊 Container status:"
-    $DOCKER_COMPOSE_CMD ps store24h-api hono-accelerator redis rabbitmq || $DOCKER_COMPOSE_CMD ps
+    $DOCKER_COMPOSE_CMD ps store24h-api hono-accelerator dashboard dragonfly rabbitmq || $DOCKER_COMPOSE_CMD ps
 else
     echo "❌ Application failed to start. Checking logs..."
     echo "📋 Container logs:"
-    $DOCKER_COMPOSE_CMD logs --tail=50 store24h-api hono-accelerator || $DOCKER_COMPOSE_CMD logs --tail=50
+    $DOCKER_COMPOSE_CMD logs --tail=50 store24h-api hono-accelerator dashboard || $DOCKER_COMPOSE_CMD logs --tail=50
     echo ""
     echo "🔍 Container status:"
     $DOCKER_COMPOSE_CMD ps -a
@@ -195,5 +215,7 @@ else
 fi
 
 echo "✨ Deployment completed successfully!"
+echo "🎯 Dragonfly Performance Edition is now running!"
 echo "💡 To view logs: $DOCKER_COMPOSE_CMD logs -f"
 echo "💡 To stop: $DOCKER_COMPOSE_CMD down"
+echo "💡 To access dashboard: http://localhost:3000"

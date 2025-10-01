@@ -23,31 +23,79 @@ services:
       retries: 5
       start_period: 30s
 
-  # Redis Service for All Environments (Local + Production)
-  redis:
-    image: redis:7-alpine
-    container_name: store24h-redis
+  # Dragonfly Service - High Performance Redis Alternative
+  dragonfly:
+    image: docker.dragonflydb.io/dragonflydb/dragonfly:latest
+    container_name: store24h-dragonfly
     ports:
       - "6379:6379"
     command: >
-      redis-server 
-      --appendonly yes 
-      --requirepass ${REDIS_PASSWORD:-store24h_redis_pass}
-      --maxmemory 512mb
-      --maxmemory-policy allkeys-lru
-      --save 900 1
-      --save 300 10
-      --save 60 10000
+      --maxmemory=24gb
+      --maxmemory-policy=allkeys-lru
+      --save=900,1,300,10,60,10000
+      --tcp-keepalive=60
+      --timeout=0
+      --tcp-backlog=511
+      --databases=16
+      --stop-writes-on-bgsave-error=no
+      --rdbcompression=yes
+      --rdbchecksum=yes
+      --appendonly=yes
+      --appendfsync=everysec
+      --auto-aof-rewrite-percentage=100
+      --auto-aof-rewrite-min-size=64mb
+      --logtostderr
+      --v=1
     volumes:
-      - redis_data:/data
+      - dragonfly_data:/data
     networks:
       - app-network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 24G
+          cpus: '2.0'
+        reservations:
+          memory: 20G
+          cpus: '1.0'
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-store24h_redis_pass}", "ping"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 30s
       timeout: 10s
       retries: 5
+      start_period: 10s
+
+  # Beautiful React Dashboard
+  dashboard:
+    build: ./dashboard
+    container_name: store24h-dashboard
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://store24h-api:80
+      - REACT_APP_DRAGONFLY_URL=dragonfly://dragonfly:6379
+      - REACT_APP_DASHBOARD_TITLE=Store24h Warmup Dashboard
+      - REACT_APP_DASHBOARD_SUBTITLE=Dragonfly Performance Monitor
+    depends_on:
+      store24h-api:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - app-network
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
       start_period: 10s
 
   # Hono.js Accelerator Microservice
@@ -55,14 +103,13 @@ services:
     build: ./hono-accelerator
     container_name: store24h-hono-accelerator
     ports:
-      - "3000:3000"
+      - "3001:3000"
     environment:
       - PORT=3000
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-store24h_redis_pass}
+      - DRAGONFLY_HOST=dragonfly
+      - DRAGONFLY_PORT=6379
     depends_on:
-      redis:
+      dragonfly:
         condition: service_healthy
     restart: unless-stopped
     networks:
@@ -95,10 +142,10 @@ services:
       # External MongoDB settings (defined in .env file)
       - MONGO_URL=${MONGO_URL}
 
-      # Redis Container settings (for all environments)
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-store24h_redis_pass}
+      # Dragonfly Container settings (High Performance Redis Alternative)
+      - DRAGONFLY_HOST=dragonfly
+      - DRAGONFLY_PORT=6379
+      - DRAGONFLY_PASSWORD=
 
       # Database configuration
       - HIBERNATE_DDL_AUTO=${HIBERNATE_DDL_AUTO}
@@ -106,30 +153,48 @@ services:
       # Redis configuration
       - USE_REDIS_REMOTE=false
       
-      # Cache warming configuration - Optimized intervals
+      # Cache warming configuration - Aggressive intervals for t3.2xlarge
       - CACHE_WARMING_ENABLED=${CACHE_WARMING_ENABLED:-true}
-      - CACHE_WARMING_SERVICES_RATE=${CACHE_WARMING_SERVICES_RATE:-900000}
-      - CACHE_WARMING_CALLBACKS_RATE=${CACHE_WARMING_CALLBACKS_RATE:-900000}
-      - CACHE_WARMING_USERS_RATE=${CACHE_WARMING_USERS_RATE:-900000}
-      - CACHE_WARMING_NUMBERS_RATE=${CACHE_WARMING_NUMBERS_RATE:-600000}
-      - CACHE_WARMING_CONFIGS_RATE=${CACHE_WARMING_CONFIGS_RATE:-900000}
-      - CACHE_WARMING_BALANCE_RATE=${CACHE_WARMING_BALANCE_RATE:-1800000}
-      - CACHE_WARMING_OPERATORS_RATE=${CACHE_WARMING_OPERATORS_RATE:-300000}
+      - CACHE_WARMING_CHIP_MODEL_ONLINE_RATE=${CACHE_WARMING_CHIP_MODEL_ONLINE_RATE:-30000}
+      - CACHE_WARMING_CHIP_MODEL_RATE=${CACHE_WARMING_CHIP_MODEL_RATE:-30000}
+      - CACHE_WARMING_SMS_MODEL_RATE=${CACHE_WARMING_SMS_MODEL_RATE:-30000}
+      - CACHE_WARMING_SMS_STRING_MODEL_RATE=${CACHE_WARMING_SMS_STRING_MODEL_RATE:-30000}
+      - CACHE_WARMING_SERVICOS_RATE=${CACHE_WARMING_SERVICOS_RATE:-60000}
+      - CACHE_WARMING_CHIP_NUMBER_CONTROL_RATE=${CACHE_WARMING_CHIP_NUMBER_CONTROL_RATE:-60000}
+      - CACHE_WARMING_V_OPERADORAS_RATE=${CACHE_WARMING_V_OPERADORAS_RATE:-60000}
+      - CACHE_WARMING_USERS_RATE=${CACHE_WARMING_USERS_RATE:-120000}
+      - CACHE_WARMING_NUMBERS_RATE=${CACHE_WARMING_NUMBERS_RATE:-120000}
+      - CACHE_WARMING_CONFIGS_RATE=${CACHE_WARMING_CONFIGS_RATE:-120000}
+      - CACHE_WARMING_BALANCE_RATE=${CACHE_WARMING_BALANCE_RATE:-300000}
+      - CACHE_WARMING_OPERATORS_RATE=${CACHE_WARMING_OPERATORS_RATE:-120000}
+      - CACHE_WARMING_CNC_INCREMENTAL_RATE=${CACHE_WARMING_CNC_INCREMENTAL_RATE:-30000}
+      - CACHE_WARMING_CNC_RECONCILE_RATE=${CACHE_WARMING_CNC_RECONCILE_RATE:-300000}
+      - CACHE_WARMING_ALIAS_INCREMENTAL_RATE=${CACHE_WARMING_ALIAS_INCREMENTAL_RATE:-30000}
+      - CACHE_WARMING_ALIAS_RECONCILE_RATE=${CACHE_WARMING_ALIAS_RECONCILE_RATE:-300000}
+      - CACHE_WARMING_APIKEY_RATE=${CACHE_WARMING_APIKEY_RATE:-120000}
       
       # RabbitMQ configuration
       - RABBITMQ_HOST=rabbitmq
 
     depends_on:
-      redis:
+      dragonfly:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
     restart: unless-stopped
     networks:
       - app-network
+    deploy:
+      resources:
+        limits:
+          memory: 6G
+          cpus: '6.0'
+        reservations:
+          memory: 4G
+          cpus: '4.0'
 
 volumes:
-  redis_data:
+  dragonfly_data:
     driver: local
   rabbitmq_data:
     driver: local
