@@ -8,21 +8,34 @@ set -e
 
 echo "🚀 Starting Store24h API deployment on EC2..."
 
+# Guard: never run on macOS (local dev). This script is for Ubuntu EC2 only.
+OS_NAME=$(uname -s)
+if [ "$OS_NAME" = "Darwin" ]; then
+    echo "❌ This deployment script must not be run on macOS. It is intended for Ubuntu EC2 only."
+    echo "🛑 Aborting."
+    exit 1
+fi
+
 # Pull latest code from git repository
 echo "📥 Pulling latest code from git repository..."
 git pull origin main
 
-# Check if running as root or with sudo
+# Determine Docker and Compose commands (prefer Compose V2)
+# Always use sudo unless running as root
 if [ "$EUID" -eq 0 ]; then
     DOCKER_CMD="docker"
-    DOCKER_COMPOSE_CMD="docker-compose"
 else
-    # Check if docker works without sudo
-    if docker ps &> /dev/null; then
-        DOCKER_CMD="docker"
+    DOCKER_CMD="sudo docker"
+fi
+
+# Prefer Docker Compose V2: `docker compose`
+if $DOCKER_CMD compose version >/dev/null 2>&1; then
+    DOCKER_COMPOSE_CMD="$DOCKER_CMD compose"
+else
+    # Fallback to legacy docker-compose binary
+    if [ "$EUID" -eq 0 ]; then
         DOCKER_COMPOSE_CMD="docker-compose"
     else
-        DOCKER_CMD="sudo docker"
         DOCKER_COMPOSE_CMD="sudo docker-compose"
     fi
 fi
@@ -47,9 +60,9 @@ if ! $DOCKER_CMD ps &> /dev/null; then
     exit 1
 fi
 
-# Validate docker-compose is available
-if ! command -v docker-compose &> /dev/null; then
-    echo "❌ docker-compose is not installed. Please install docker-compose first."
+# Validate docker compose is available (v2 or v1)
+if ! $DOCKER_COMPOSE_CMD version >/dev/null 2>&1; then
+    echo "❌ Docker Compose is not available. Install Docker Compose V2 (docker compose) or legacy docker-compose."
     exit 1
 fi
 
@@ -85,7 +98,7 @@ rm -rf target/ || true
 
 # Build application images with FORCE NO-CACHE (does not affect redis/rabbitmq)
 echo "🔨 FORCE BUILDING application images from scratch (100% fresh)..."
-echo "⏱️ Building with retry logic to prevent context cancellation..."
+echo "⏱️ Setting build timeout to 30 minutes to prevent context cancellation..."
 
 # Build with increased timeout and memory limits
 export DOCKER_BUILDKIT=1
@@ -100,7 +113,7 @@ while [ $BUILD_ATTEMPTS -lt $MAX_ATTEMPTS ]; do
     BUILD_ATTEMPTS=$((BUILD_ATTEMPTS + 1))
     echo "🔄 Build attempt $BUILD_ATTEMPTS/$MAX_ATTEMPTS..."
     
-    if $DOCKER_COMPOSE_CMD build --no-cache --pull store24h-api; then
+    if timeout 1800 $DOCKER_COMPOSE_CMD build --no-cache --pull store24h-api; then
         echo "✅ store24h-api built successfully!"
         break
     else
@@ -119,7 +132,7 @@ done
 
 # Build hono-accelerator
 echo "🔨 Building hono-accelerator..."
-$DOCKER_COMPOSE_CMD build --no-cache --pull hono-accelerator
+timeout 600 $DOCKER_COMPOSE_CMD build --no-cache --pull hono-accelerator
 
 # Optionally refresh infra if explicitly requested
 if [ "$REBUILD_INFRA" = "true" ]; then
