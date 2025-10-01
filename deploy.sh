@@ -100,9 +100,9 @@ rm -rf target/ || true
 echo "🔨 FORCE BUILDING application images from scratch (100% fresh)..."
 echo "⏱️ Setting build timeout to 30 minutes to prevent context cancellation..."
 
-# Build with increased timeout and memory limits
-export DOCKER_BUILDKIT=1
-export BUILDKIT_PROGRESS=plain
+# Disable BuildKit to avoid bake issues on EC2
+export DOCKER_BUILDKIT=0
+export COMPOSE_DOCKER_CLI_BUILD=0
 
 # Build store24h-api with timeout and retry logic
 echo "🔨 Building store24h-api..."

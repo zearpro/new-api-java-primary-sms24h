@@ -20,8 +20,9 @@ FROM eclipse-temurin:17-jre
 
 # Install curl and other utilities for health checks and debugging
 RUN apt-get update && \
-    apt-get install -y curl wget netcat-traditional && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get install -y curl wget netcat-openbsd && \
+    rm -rf /var/lib/apt/lists/* && \
+    apt-get clean
 
 # Create app user for security
 RUN groupadd -r appuser && useradd -r -g appuser appuser
