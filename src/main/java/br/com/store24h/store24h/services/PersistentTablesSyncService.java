@@ -119,12 +119,14 @@ public class PersistentTablesSyncService {
         logger.info("CNC reconcile synced {} rows from tail window starting at {}", rows.size(), startId);
     }
 
-    // Incremental by created (every 2 min)
+    // Incremental by id (every 2 min) - chip_number_control_alias_service doesn't have created column
     public void syncAliasIncremental(int pageSize) {
-        long lastCreated = getLongValue(ALIAS_MAX_CREATED_KEY, 0L);
-        String sql = "SELECT created FROM chip_number_control_alias_service WHERE created > FROM_UNIXTIME(:lastMs/1000) ORDER BY created ASC LIMIT :limit";
+        long lastId = getLongValue(ALIAS_MAX_CREATED_KEY, 0L); // Reusing this key for max_id tracking
+        String sql = "SELECT c.chip_number_control_id, c.alias_service, cn.chip_number FROM chip_number_control_alias_service c " +
+                    "INNER JOIN chip_number_control cn ON cn.id = c.chip_number_control_id " +
+                    "WHERE c.chip_number_control_id > :lastId ORDER BY c.chip_number_control_id ASC LIMIT :limit";
         Query q = entityManager.createNativeQuery(sql)
-                .setParameter("lastMs", lastCreated)
+                .setParameter("lastId", lastId)
                 .setParameter("limit", pageSize);
         @SuppressWarnings("unchecked")
         List<Object[]> raw = q.getResultList();
@@ -132,37 +134,50 @@ public class PersistentTablesSyncService {
         List<Map<String, Object>> rows = new ArrayList<>(raw.size());
         for (Object[] arr : raw) {
             Map<String, Object> m = new HashMap<>();
-            m.put("created", arr[0]);
+            m.put("chip_number_control_id", ((Number) arr[0]).longValue());
+            m.put("alias_service", arr[1]);
+            m.put("chip_number", arr[2]);
+            // Create a synthetic timestamp for ordering
+            m.put("created", new Timestamp(System.currentTimeMillis()));
             rows.add(m);
         }
-        long maxCreated = lastCreated;
+        long maxId = lastId;
         for (Map<String, Object> r : rows) {
             cacheAliasRow(r);
-            Timestamp ts = (Timestamp) r.get("created");
-            if (ts != null && ts.getTime() > maxCreated) maxCreated = ts.getTime();
+            long id = ((Number) r.get("chip_number_control_id")).longValue();
+            if (id > maxId) maxId = id;
         }
-        setLongValue(ALIAS_MAX_CREATED_KEY, maxCreated);
-        logger.info("Alias incremental synced {} rows. max_created_ms={}", rows.size(), maxCreated);
+        setLongValue(ALIAS_MAX_CREATED_KEY, maxId);
+        logger.info("Alias incremental synced {} rows. max_id={}", rows.size(), maxId);
     }
 
-    // Reconcile recent time window (every 15 min)
+    // Reconcile recent records (every 15 min) - using id-based approach since no created column
     public void syncAliasReconcileRecentHours(int recentHours, int pageSize) {
-        String sql = "SELECT created FROM chip_number_control_alias_service WHERE created >= NOW() - INTERVAL :hrs HOUR ORDER BY created ASC LIMIT :limit";
+        // Get recent records by joining with chip_number_control and using a reasonable id range
+        String sql = "SELECT c.chip_number_control_id, c.alias_service, cn.chip_number FROM chip_number_control_alias_service c " +
+                    "INNER JOIN chip_number_control cn ON cn.id = c.chip_number_control_id " +
+                    "WHERE c.chip_number_control_id > (SELECT MAX(id) - :recentCount FROM chip_number_control) " +
+                    "ORDER BY c.chip_number_control_id DESC LIMIT :limit";
         Query q = entityManager.createNativeQuery(sql)
-                .setParameter("hrs", recentHours)
+                .setParameter("recentCount", recentHours * 1000) // Approximate recent records
                 .setParameter("limit", pageSize);
         @SuppressWarnings("unchecked")
         List<Object[]> raw = q.getResultList();
+        if (raw.isEmpty()) return;
         List<Map<String, Object>> rows = new ArrayList<>(raw.size());
         for (Object[] arr : raw) {
             Map<String, Object> m = new HashMap<>();
-            m.put("created", arr[0]);
+            m.put("chip_number_control_id", ((Number) arr[0]).longValue());
+            m.put("alias_service", arr[1]);
+            m.put("chip_number", arr[2]);
+            // Create a synthetic timestamp for ordering
+            m.put("created", new Timestamp(System.currentTimeMillis()));
             rows.add(m);
         }
         for (Map<String, Object> r : rows) {
             cacheAliasRow(r);
         }
-        logger.info("Alias reconcile synced {} rows from last {} hours", rows.size(), recentHours);
+        logger.info("Alias reconcile synced {} rows from recent records", rows.size());
     }
 }
 

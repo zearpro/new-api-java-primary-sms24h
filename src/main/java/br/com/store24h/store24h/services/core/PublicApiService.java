@@ -481,8 +481,8 @@ public class PublicApiService {
         }
         try {
             servicoList = isSmshub ? this.servicosRepository.findAllBySmshub(1) : this.servicosRepository.findAll();
-            if (operator.isPresent() && !operator.get().toUpperCase().equals("ANY")) {
-                List<ChipModel> chipModelList = this.chipRepository.findByAtivoAndOperadora(true, operator.get());
+            if (operator.isPresent() && !operator.get().toLowerCase().equals("any")) {
+                List<ChipModel> chipModelList = this.chipRepository.findByAtivoAndOperadora(true, operator.get().toLowerCase());
                 ArrayList<String> numbers = new ArrayList<String>();
                 chipModelList.forEach(chipModel -> numbers.add(chipModel.getNumber()));
                 List<ChipNumberControl> chipNumberControlList = this.chipNumberControlRepository.findByChipNumberIn(numbers);

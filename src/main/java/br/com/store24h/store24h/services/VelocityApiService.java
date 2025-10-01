@@ -20,6 +20,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -124,9 +125,9 @@ public class VelocityApiService {
                 return "FORBIDEN_SERVICE";
             }
 
-            // Step 6: Validate operator
-            if (!optimizedApiService.isValidOperatorCached(operatorName)) {
-                return "INVALID_OPERATOR";
+            // Step 6: Validate country/operator combination using chip_model
+            if (!validateCountryOperatorCombination(countryCode, operatorName)) {
+                return "BAD_REQUEST";
             }
 
             // Step 7: Atomic number reservation from Redis
@@ -381,6 +382,29 @@ public class VelocityApiService {
         }
 
         return stats;
+    }
+
+    /**
+     * Validate country/operator combination using chip_model table
+     * If operator = "any", check if any operator exists for the country
+     * If operator is specific, check if that operator exists for the country
+     */
+    private boolean validateCountryOperatorCombination(String countryCode, String operatorName) {
+        try {
+            if (operatorName == null || operatorName.equalsIgnoreCase("any")) {
+                // Check if any operator exists for this country
+                List<ChipModel> anyOperator = chipRepository.findByCountryAndAlugadoAndAtivo(countryCode, false, true);
+                return !anyOperator.isEmpty();
+            } else {
+                // Check if specific operator exists for this country
+                List<ChipModel> specificOperator = chipRepository.findByCountryAndAlugadoAndAtivoAndOperadora(
+                    countryCode, false, true, operatorName.toLowerCase());
+                return !specificOperator.isEmpty();
+            }
+        } catch (Exception e) {
+            logger.error("❌ Error validating country/operator combination: {}:{}", countryCode, operatorName, e);
+            return false;
+        }
     }
 
     /**

@@ -197,7 +197,7 @@ implements Serializable {
         if (operator.isPresent()) {
             try {
                 JSONObject obj = new JSONObject(this.byOperator);
-                JSONObject operadora = obj.getJSONObject(operator.get().toUpperCase());
+                JSONObject operadora = obj.getJSONObject(operator.get().toLowerCase());
                 return operadora.optInt("disponible", 0);
             }
             catch (Exception e) {

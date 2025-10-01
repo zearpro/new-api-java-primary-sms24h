@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import { Redis } from 'ioredis'
+import amqp from 'amqplib'
 
 const app = new Hono()
 
@@ -13,6 +14,37 @@ const redis = new Redis({
 	retryDelayOnFailover: 100,
 	maxRetriesPerRequest: 3,
 })
+
+// RabbitMQ connection
+let rabbitConnection = null
+let rabbitChannel = null
+
+async function connectRabbitMQ() {
+	try {
+		const rabbitUrl = `amqp://${process.env.RABBITMQ_USER || 'guest'}:${
+			process.env.RABBITMQ_PASSWORD || 'guest'
+		}@${process.env.RABBITMQ_HOST || 'localhost'}:${
+			process.env.RABBITMQ_PORT || '5672'
+		}`
+		rabbitConnection = await amqp.connect(rabbitUrl)
+		rabbitChannel = await rabbitConnection.createChannel()
+
+		// Declare queues
+		await rabbitChannel.assertQueue('number.assigned', { durable: true })
+		await rabbitChannel.assertQueue('activation.status.update', {
+			durable: true,
+		})
+		await rabbitChannel.assertQueue('activation.completed', { durable: true })
+		await rabbitChannel.assertQueue('number.released', { durable: true })
+
+		console.log('✅ Connected to RabbitMQ')
+	} catch (error) {
+		console.error('❌ RabbitMQ connection error:', error)
+	}
+}
+
+// Initialize RabbitMQ connection
+connectRabbitMQ()
 
 // Middleware
 app.use('*', cors())
@@ -190,9 +222,24 @@ app.post('/api/v2/getNumber', async (c) => {
 			timestamp: new Date().toISOString(),
 		}
 
-		// Note: In a real implementation, you'd publish to RabbitMQ here
-		// For now, we'll just log it
-		console.log('Assignment message:', assignmentMessage)
+		// Publish to RabbitMQ for async MySQL writes
+		if (rabbitChannel) {
+			try {
+				await rabbitChannel.sendToQueue(
+					'number.assigned',
+					Buffer.from(JSON.stringify(assignmentMessage)),
+					{ persistent: true }
+				)
+				console.log('✅ Assignment message published to RabbitMQ')
+			} catch (error) {
+				console.error('❌ Error publishing to RabbitMQ:', error)
+			}
+		} else {
+			console.warn(
+				'⚠️ RabbitMQ channel not available, logging assignment:',
+				assignmentMessage
+			)
+		}
 
 		const responseTime = Date.now() - startTime
 
@@ -249,6 +296,146 @@ app.get('/api/v2/getExtraActivation', async (c) => {
 		})
 	} catch (error) {
 		console.error('Error in getExtraActivation:', error)
+		return c.json({ error: 'Internal server error' }, 500)
+	}
+})
+
+// Async MySQL Writer - Handle activation status updates
+app.post('/api/v2/activation/status', async (c) => {
+	const startTime = Date.now()
+
+	try {
+		const body = await c.req.json()
+		const { activationId, status, smsCode } = body
+
+		if (!activationId || !status) {
+			return c.json({ error: 'Missing required parameters' }, 400)
+		}
+
+		// Publish status update to RabbitMQ
+		const statusMessage = {
+			activationId: activationId,
+			status: status,
+			smsCode: smsCode || null,
+			timestamp: new Date().toISOString(),
+		}
+
+		if (rabbitChannel) {
+			try {
+				await rabbitChannel.sendToQueue(
+					'activation.status.update',
+					Buffer.from(JSON.stringify(statusMessage)),
+					{ persistent: true }
+				)
+				console.log('✅ Status update published to RabbitMQ')
+			} catch (error) {
+				console.error('❌ Error publishing status update:', error)
+			}
+		}
+
+		const responseTime = Date.now() - startTime
+
+		return c.json({
+			success: true,
+			activationId: activationId,
+			status: status,
+			response_time_ms: responseTime,
+		})
+	} catch (error) {
+		console.error('Error in activation status update:', error)
+		return c.json({ error: 'Internal server error' }, 500)
+	}
+})
+
+// Async MySQL Writer - Handle activation completion
+app.post('/api/v2/activation/complete', async (c) => {
+	const startTime = Date.now()
+
+	try {
+		const body = await c.req.json()
+		const { activationId, smsCode, finalStatus } = body
+
+		if (!activationId || !finalStatus) {
+			return c.json({ error: 'Missing required parameters' }, 400)
+		}
+
+		// Publish completion to RabbitMQ
+		const completionMessage = {
+			activationId: activationId,
+			smsCode: smsCode || null,
+			finalStatus: finalStatus,
+			timestamp: new Date().toISOString(),
+		}
+
+		if (rabbitChannel) {
+			try {
+				await rabbitChannel.sendToQueue(
+					'activation.completed',
+					Buffer.from(JSON.stringify(completionMessage)),
+					{ persistent: true }
+				)
+				console.log('✅ Activation completion published to RabbitMQ')
+			} catch (error) {
+				console.error('❌ Error publishing completion:', error)
+			}
+		}
+
+		const responseTime = Date.now() - startTime
+
+		return c.json({
+			success: true,
+			activationId: activationId,
+			finalStatus: finalStatus,
+			response_time_ms: responseTime,
+		})
+	} catch (error) {
+		console.error('Error in activation completion:', error)
+		return c.json({ error: 'Internal server error' }, 500)
+	}
+})
+
+// Async MySQL Writer - Handle number release
+app.post('/api/v2/number/release', async (c) => {
+	const startTime = Date.now()
+
+	try {
+		const body = await c.req.json()
+		const { number, reason } = body
+
+		if (!number) {
+			return c.json({ error: 'Missing required parameters' }, 400)
+		}
+
+		// Publish release to RabbitMQ
+		const releaseMessage = {
+			number: number,
+			reason: reason || 'RELEASED',
+			timestamp: new Date().toISOString(),
+		}
+
+		if (rabbitChannel) {
+			try {
+				await rabbitChannel.sendToQueue(
+					'number.released',
+					Buffer.from(JSON.stringify(releaseMessage)),
+					{ persistent: true }
+				)
+				console.log('✅ Number release published to RabbitMQ')
+			} catch (error) {
+				console.error('❌ Error publishing release:', error)
+			}
+		}
+
+		const responseTime = Date.now() - startTime
+
+		return c.json({
+			success: true,
+			number: number,
+			reason: reason || 'RELEASED',
+			response_time_ms: responseTime,
+		})
+	} catch (error) {
+		console.error('Error in number release:', error)
 		return c.json({ error: 'Internal server error' }, 500)
 	}
 })

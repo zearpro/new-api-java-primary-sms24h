@@ -91,6 +91,8 @@ public class SmsApi {
     NumerosService numerosService;
     @Autowired
     CountryOperatoraCacheService countryOperatoraCacheService;
+    @Autowired
+    org.springframework.data.redis.core.RedisTemplate<String, Object> redisTemplate;
     private static final String REQUEST_ID = "requestId";
 
     @GetMapping
@@ -103,6 +105,14 @@ public class SmsApi {
             // empty catch block
         }
         String responseAPI = "";
+        
+        // ✅ Route validation - only allow specific actions
+        List<String> allowedActions = Arrays.asList("getNumber", "getBalance", "getPrices", "getExtraActivation");
+        if (!allowedActions.contains(action)) {
+            // Return blank page for invalid actions
+            return ResponseEntity.status(403).body("");
+        }
+        
         if (System.getenv("IS_SMSHUB") == null && !this.userService.isValidApiKey(apiKey)) {
             responseAPI = "BAD_KEY";
             return ResponseEntity.badRequest().body((Object)responseAPI);
@@ -129,7 +139,20 @@ public class SmsApi {
             if (service.isPresent()) {
                 Optional<br.com.store24h.store24h.model.Servico> servicoCheck = servicosRepository.findFirstByAlias(service.get());
                 if (!servicoCheck.isPresent() || !servicoCheck.get().isActivity()) {
-                    return ResponseEntity.badRequest().body((Object)"BAD_SERVICE");
+                    // If velocity fast-path is enabled, allow service to proceed (Redis-first path will validate availability)
+                    if (System.getenv("VELOCITY_ENABLED") != null) {
+                        // proceed without DB validation
+                    } else {
+                    // Fallback: accept if Redis pools exist for this service
+                    try {
+                        java.util.Set<String> keys = redisTemplate.keys("pool_count:" + service.get() + ":*");
+                        if (keys == null || keys.isEmpty()) {
+                            return ResponseEntity.badRequest().body((Object)"BAD_SERVICE");
+                        }
+                    } catch (Exception e) {
+                        return ResponseEntity.badRequest().body((Object)"BAD_SERVICE");
+                    }
+                    }
                 }
             }
             

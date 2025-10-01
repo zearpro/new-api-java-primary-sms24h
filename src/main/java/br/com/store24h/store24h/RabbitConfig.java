@@ -86,4 +86,37 @@ public class RabbitConfig {
             .withArgument("x-message-ttl", 30000) // 30 seconds TTL
             .build();
     }
+
+    /**
+     * Activation status update queue for async MySQL writes
+     */
+    @Bean
+    public org.springframework.amqp.core.Queue activationStatusUpdateQueue() {
+        return org.springframework.amqp.core.QueueBuilder
+            .durable("activation.status.update")
+            .withArgument("x-message-ttl", 600000) // 10 minutes TTL
+            .build();
+    }
+
+    /**
+     * Activation completion queue for async MySQL writes
+     */
+    @Bean
+    public org.springframework.amqp.core.Queue activationCompletedQueue() {
+        return org.springframework.amqp.core.QueueBuilder
+            .durable("activation.completed")
+            .withArgument("x-message-ttl", 600000) // 10 minutes TTL
+            .build();
+    }
+
+    /**
+     * Number release queue for async MySQL writes
+     */
+    @Bean
+    public org.springframework.amqp.core.Queue numberReleasedQueue() {
+        return org.springframework.amqp.core.QueueBuilder
+            .durable("number.released")
+            .withArgument("x-message-ttl", 300000) // 5 minutes TTL
+            .build();
+    }
 }
