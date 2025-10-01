@@ -85,7 +85,7 @@ rm -rf target/ || true
 
 # Build application images with FORCE NO-CACHE (does not affect redis/rabbitmq)
 echo "🔨 FORCE BUILDING application images from scratch (100% fresh)..."
-echo "⏱️ Setting build timeout to 30 minutes to prevent context cancellation..."
+echo "⏱️ Building with retry logic to prevent context cancellation..."
 
 # Build with increased timeout and memory limits
 export DOCKER_BUILDKIT=1
@@ -100,7 +100,7 @@ while [ $BUILD_ATTEMPTS -lt $MAX_ATTEMPTS ]; do
     BUILD_ATTEMPTS=$((BUILD_ATTEMPTS + 1))
     echo "🔄 Build attempt $BUILD_ATTEMPTS/$MAX_ATTEMPTS..."
     
-    if timeout 1800 $DOCKER_COMPOSE_CMD build --no-cache --pull store24h-api; then
+    if $DOCKER_COMPOSE_CMD build --no-cache --pull store24h-api; then
         echo "✅ store24h-api built successfully!"
         break
     else
@@ -119,7 +119,7 @@ done
 
 # Build hono-accelerator
 echo "🔨 Building hono-accelerator..."
-timeout 600 $DOCKER_COMPOSE_CMD build --no-cache --pull hono-accelerator
+$DOCKER_COMPOSE_CMD build --no-cache --pull hono-accelerator
 
 # Optionally refresh infra if explicitly requested
 if [ "$REBUILD_INFRA" = "true" ]; then
