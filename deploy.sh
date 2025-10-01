@@ -138,16 +138,20 @@ cd hono-accelerator
 timeout 600 $DOCKER_CMD build --no-cache --pull -t hono-accelerator .
 cd ..
 
+# Ensure Redis and RabbitMQ are running (start if not running)
+echo "🔧 Ensuring Redis and RabbitMQ are running..."
+$DOCKER_COMPOSE_CMD up -d redis rabbitmq || true
+
 # Optionally refresh infra if explicitly requested
 if [ "$REBUILD_INFRA" = "true" ]; then
-    echo "🏗️ REBUILD_INFRA=true -> Updating Redis and RabbitMQ as well..."
+    echo "🏗️ REBUILD_INFRA=true -> Rebuilding Redis and RabbitMQ..."
     $DOCKER_COMPOSE_CMD pull redis rabbitmq || true
     $DOCKER_COMPOSE_CMD up -d --force-recreate redis rabbitmq || true
 else
-    echo "ℹ️ Skipping Redis/RabbitMQ rebuild (preserving data). Set REBUILD_INFRA=true to rebuild."
+    echo "ℹ️ Redis/RabbitMQ are running (preserving data). Set REBUILD_INFRA=true to rebuild."
 fi
 
-# Start/recreate application services without touching infra
+# Start/recreate application services
 echo "🚀 Starting application services..."
 $DOCKER_COMPOSE_CMD --env-file .env up -d --no-deps store24h-api hono-accelerator
 
