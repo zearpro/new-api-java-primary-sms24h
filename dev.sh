@@ -25,6 +25,26 @@ if ! docker ps &> /dev/null; then
     exit 1
 fi
 
+# Load environment variables safely
+echo "📄 Loading environment variables..."
+set -o allexport
+# Use a safer method to load env vars, avoiding command interpretation
+while IFS= read -r line; do
+    # Skip comments and empty lines
+    if [[ $line =~ ^[[:space:]]*# ]] || [[ -z "${line// }" ]]; then
+        continue
+    fi
+    # Skip problematic variables that might contain commands
+    if [[ $line =~ ^[[:space:]]*JAVA_OPTS ]] || [[ $line =~ ^[[:space:]]*NOT_CRON ]]; then
+        continue
+    fi
+    # Export the variable safely
+    if [[ $line =~ ^[[:space:]]*([^=]+)=(.*)$ ]]; then
+        export "${BASH_REMATCH[1]}"="${BASH_REMATCH[2]}"
+    fi
+done < "$ENV_FILE"
+set +o allexport
+
 # Clean up any existing containers
 echo "🧹 Limpando contêineres existentes..."
 docker-compose down --remove-orphans || true

@@ -69,7 +69,21 @@ fi
 # Load environment variables safely (excluding problematic ones)
 echo "📄 Loading environment variables..."
 set -o allexport
-source <(grep -v '^#' .env | grep -v '^JAVA_OPTS' | grep -v '^\s*$' | sed 's/[[:space:]]*=[[:space:]]*/=/g')
+# Use a safer method to load env vars, avoiding command interpretation
+while IFS= read -r line; do
+    # Skip comments and empty lines
+    if [[ $line =~ ^[[:space:]]*# ]] || [[ -z "${line// }" ]]; then
+        continue
+    fi
+    # Skip problematic variables that might contain commands
+    if [[ $line =~ ^[[:space:]]*JAVA_OPTS ]] || [[ $line =~ ^[[:space:]]*NOT_CRON ]]; then
+        continue
+    fi
+    # Export the variable safely
+    if [[ $line =~ ^[[:space:]]*([^=]+)=(.*)$ ]]; then
+        export "${BASH_REMATCH[1]}"="${BASH_REMATCH[2]}"
+    fi
+done < .env
 set +o allexport
 
 # Control infra rebuild (dragonfly/rabbitmq) via env flag
