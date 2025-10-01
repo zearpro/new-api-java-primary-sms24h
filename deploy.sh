@@ -53,9 +53,12 @@ set -o allexport
 source <(grep -v '^#' .env | grep -v '^JAVA_OPTS' | grep -v '^\s*$' | sed 's/[[:space:]]*=[[:space:]]*/=/g')
 set +o allexport
 
-# Stop existing containers if running
-echo "🛑 Stopping existing containers..."
-$DOCKER_COMPOSE_CMD down --remove-orphans || true
+# Control infra rebuild (redis/rabbitmq) via env flag
+REBUILD_INFRA=${REBUILD_INFRA:-false}
+
+# Do NOT stop Redis/RabbitMQ by default. Only rebuild app services.
+echo "🛑 Stopping/recreating only application services (store24h-api, hono-accelerator)..."
+$DOCKER_COMPOSE_CMD stop store24h-api hono-accelerator || true
 
 # FORCE DELETE ALL JAVA IMAGES - 100% Fresh Build
 echo "🗑️ FORCE DELETING all Java application images..."
@@ -74,13 +77,22 @@ $DOCKER_CMD builder prune -a -f || true
 echo "🗑️ Removing existing target directory to force fresh JAR build..."
 rm -rf target/ || true
 
-# Build the Docker image with FORCE NO-CACHE
-echo "🔨 FORCE BUILDING Docker image from scratch (100% fresh)..."
-$DOCKER_COMPOSE_CMD build --no-cache --pull
+# Build application images with FORCE NO-CACHE (does not affect redis/rabbitmq)
+echo "🔨 FORCE BUILDING application images from scratch (100% fresh)..."
+$DOCKER_COMPOSE_CMD build --no-cache --pull store24h-api hono-accelerator
 
-# Start the application
-echo "🚀 Starting the application..."
-$DOCKER_COMPOSE_CMD --env-file .env up -d
+# Optionally refresh infra if explicitly requested
+if [ "$REBUILD_INFRA" = "true" ]; then
+    echo "🏗️ REBUILD_INFRA=true -> Updating Redis and RabbitMQ as well..."
+    $DOCKER_COMPOSE_CMD pull redis rabbitmq || true
+    $DOCKER_COMPOSE_CMD up -d --force-recreate redis rabbitmq || true
+else
+    echo "ℹ️ Skipping Redis/RabbitMQ rebuild (preserving data). Set REBUILD_INFRA=true to rebuild."
+fi
+
+# Start/recreate application services without touching infra
+echo "🚀 Starting application services..."
+$DOCKER_COMPOSE_CMD --env-file .env up -d --no-deps store24h-api hono-accelerator
 
 # Wait for the application to start with better health checking
 echo "⏳ Waiting for application to start..."
@@ -89,7 +101,7 @@ WAIT_TIME=0
 PORT=${LISTEN_PORT:-80}
 
 while [ $WAIT_TIME -lt $MAX_WAIT ]; do
-    if $DOCKER_COMPOSE_CMD ps | grep -q "Up"; then
+    if $DOCKER_COMPOSE_CMD ps store24h-api | grep -q "Up"; then
         # Check if the health endpoint is responding
         if curl -f -s "http://localhost:$PORT/actuator/health" > /dev/null 2>&1; then
             echo "✅ Application is running and healthy!"
@@ -103,18 +115,18 @@ while [ $WAIT_TIME -lt $MAX_WAIT ]; do
 done
 
 # Final status check
-if $DOCKER_COMPOSE_CMD ps | grep -q "Up"; then
+if $DOCKER_COMPOSE_CMD ps store24h-api | grep -q "Up"; then
     echo "✅ Application containers are running!"
     echo "🌐 Application URL: http://localhost:$PORT"
     echo "🔍 Health check: http://localhost:$PORT/actuator/health"
     echo "📚 API docs: http://localhost:$PORT/docs/"
     echo ""
     echo "📊 Container status:"
-    $DOCKER_COMPOSE_CMD ps
+    $DOCKER_COMPOSE_CMD ps store24h-api hono-accelerator redis rabbitmq || $DOCKER_COMPOSE_CMD ps
 else
     echo "❌ Application failed to start. Checking logs..."
     echo "📋 Container logs:"
-    $DOCKER_COMPOSE_CMD logs --tail=50
+    $DOCKER_COMPOSE_CMD logs --tail=50 store24h-api hono-accelerator || $DOCKER_COMPOSE_CMD logs --tail=50
     echo ""
     echo "🔍 Container status:"
     $DOCKER_COMPOSE_CMD ps -a
