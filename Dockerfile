@@ -12,8 +12,8 @@ COPY src ./src
 
 # Build the project and create the JAR file
 # This runs all tests and packages the application
-# Use parallel builds and offline mode for faster builds
-RUN mvn clean package -DskipTests -T 4C -o
+# Use parallel builds for faster builds (removed offline mode to allow dependency downloads)
+RUN mvn clean package -DskipTests -T 4C
 
 # Stage 2: Create the final runtime image
 FROM eclipse-temurin:17-jre
