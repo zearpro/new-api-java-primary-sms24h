@@ -8,6 +8,10 @@ set -e
 
 echo "🚀 Starting Store24h API deployment on EC2..."
 
+# Pull latest code from git repository
+echo "📥 Pulling latest code from git repository..."
+git pull origin main
+
 # Check if running as root or with sudo
 if [ "$EUID" -eq 0 ]; then
     DOCKER_CMD="docker"
