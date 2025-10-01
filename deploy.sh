@@ -2,6 +2,7 @@
 
 # Production deployment script for AWS EC2
 # This script builds and deploys the Store24h API
+# FORCES 100% FRESH BUILD - Deletes all images and rebuilds from scratch
 
 set -e
 
@@ -52,13 +53,26 @@ set +o allexport
 echo "🛑 Stopping existing containers..."
 $DOCKER_COMPOSE_CMD down --remove-orphans || true
 
-# Clean up old images to save space
-echo "🧹 Cleaning up old Docker images..."
-$DOCKER_CMD image prune -f || true
+# FORCE DELETE ALL JAVA IMAGES - 100% Fresh Build
+echo "🗑️ FORCE DELETING all Java application images..."
+$DOCKER_CMD images | grep -E "(store24h|api-ecr-extracted)" | awk '{print $3}' | xargs -r $DOCKER_CMD rmi -f || true
 
-# Build the Docker image
-echo "🔨 Building Docker image..."
-$DOCKER_COMPOSE_CMD build --no-cache
+# FORCE DELETE ALL IMAGES WITH SAME NAME PATTERN
+echo "🗑️ FORCE DELETING images by name pattern..."
+$DOCKER_CMD images | grep -E "(api-ecr-extracted|store24h-api)" | awk '{print $1":"$2}' | xargs -r $DOCKER_CMD rmi -f || true
+
+# Clean up ALL unused images and build cache
+echo "🧹 AGGRESSIVE cleanup of ALL Docker images and build cache..."
+$DOCKER_CMD system prune -a -f || true
+$DOCKER_CMD builder prune -a -f || true
+
+# Remove any existing target directory to force fresh JAR build
+echo "🗑️ Removing existing target directory to force fresh JAR build..."
+rm -rf target/ || true
+
+# Build the Docker image with FORCE NO-CACHE
+echo "🔨 FORCE BUILDING Docker image from scratch (100% fresh)..."
+$DOCKER_COMPOSE_CMD build --no-cache --pull
 
 # Start the application
 echo "🚀 Starting the application..."
