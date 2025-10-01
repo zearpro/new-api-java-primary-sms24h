@@ -1,11 +1,11 @@
 /*
  * Country and Operator validation service with Redis caching
+ * Uses chip_model table for strict validation
  */
 package br.com.store24h.store24h.services;
 
-import br.com.store24h.store24h.RedisService;
-import br.com.store24h.store24h.model.Operadoras;
-import br.com.store24h.store24h.repository.OperadorasRepository;
+import br.com.store24h.store24h.model.ChipModel;
+import br.com.store24h.store24h.repository.ChipRepository;
 import java.time.Duration;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -21,124 +21,121 @@ public class CountryOperatoraCacheService {
     private static final Logger logger = LoggerFactory.getLogger(CountryOperatoraCacheService.class);
     
     @Autowired
-    private OperadorasRepository operadorasRepository;
+    private ChipRepository chipRepository;
     
-    @Autowired
-    private RedisService redisService;
-    
-    private static final String CACHE_KEY = "country_operadora_valid";
     private static final Duration CACHE_TTL = Duration.ofMinutes(5);
     
     /**
-     * Check if country+operator combination is valid
+     * Check if country+operator combination is valid using chip_model table
+     * STRICT VALIDATION: Only allows combinations that actually exist in chip_model
      */
     @Cacheable(value = "countryOperadoraValidation", key = "#country + ':' + #operator")
     public boolean isValidCombination(String country, String operator) {
         try {
             if (operator.equalsIgnoreCase("any")) {
-                // For "any" operator, just check if country exists
-                return isValidCountry(country);
+                // For "any" operator, check if ANY operator exists for this country in chip_model
+                List<ChipModel> anyOperator = chipRepository.findByCountryAndAlugadoAndAtivo(country, false, true);
+                boolean isValid = !anyOperator.isEmpty();
+                logger.info("🔍 ANY operator validation for country {}: {} (found {} numbers)", country, isValid, anyOperator.size());
+                return isValid;
             }
             
-            // Check specific country+operator combination
-            List<Operadoras> combinations = operadorasRepository.findAll();
-            boolean isValid = combinations.stream()
-                .anyMatch(op -> op.getCountry() != null && 
-                               country.equals(op.getCountry()) && 
-                               operator.equalsIgnoreCase(op.getOperadora()));
+            // Check specific country+operator combination in chip_model
+            List<ChipModel> specificOperator = chipRepository.findByCountryAndAlugadoAndAtivoAndOperadora(
+                country, false, true, operator.toLowerCase());
+            boolean isValid = !specificOperator.isEmpty();
             
-            // ✅ Fallback: If no country data exists yet, allow existing operators
-            if (!isValid && combinations.stream().anyMatch(op -> operator.equalsIgnoreCase(op.getOperadora()))) {
-                logger.warn("Country validation failed but operator {} exists - allowing during migration", operator);
-                isValid = true;
+            logger.info("🔍 Specific operator validation for {}:{} = {} (found {} numbers)", 
+                country, operator, isValid, specificOperator.size());
+            
+            if (!isValid) {
+                logger.warn("❌ INVALID COMBINATION: country={}, operator={} - NO NUMBERS FOUND", country, operator);
             }
             
-            logger.debug("Validation result for {}:{} = {}", country, operator, isValid);
             return isValid;
                                
         } catch (Exception e) {
-            logger.error("Error validating {}:{}", country, operator, e);
-            return true; // Fail-safe: allow if can't verify
+            logger.error("❌ Error validating {}:{}", country, operator, e);
+            return false; // STRICT: Fail closed - deny if can't verify
         }
     }
     
     /**
-     * Check if country exists in v_operadoras
+     * Check if country exists using chip_model table
+     * STRICT VALIDATION: Only allows countries that have actual numbers
      */
     public boolean isValidCountry(String country) {
         try {
-            List<Operadoras> all = operadorasRepository.findAll();
-            boolean isValid = all.stream().anyMatch(op -> op.getCountry() != null && country.equals(op.getCountry()));
+            List<ChipModel> countryNumbers = chipRepository.findByCountryAndAlugadoAndAtivo(country, false, true);
+            boolean isValid = !countryNumbers.isEmpty();
             
-            // ✅ Fallback: During migration, if no country data exists, allow common countries
-            if (!isValid && (country.equals("73") || country.equals("36"))) {
-                logger.warn("Country validation failed for {} - allowing during migration", country);
-                isValid = true;
+            logger.info("🔍 Country validation for {}: {} (found {} numbers)", country, isValid, countryNumbers.size());
+            
+            if (!isValid) {
+                logger.warn("❌ INVALID COUNTRY: {} - NO NUMBERS FOUND", country);
             }
             
-            logger.debug("Country validation for {} = {}", country, isValid);
             return isValid;
         } catch (Exception e) {
-            logger.error("Error validating country: {}", country, e);
-            return true; // Fail-safe
+            logger.error("❌ Error validating country: {}", country, e);
+            return false; // STRICT: Fail closed
         }
     }
     
     /**
-     * Get all valid operators for a specific country
+     * Get all valid operators for a specific country using chip_model
      */
     public List<String> getOperatorsForCountry(String country) {
         try {
-            List<Operadoras> all = operadorasRepository.findAll();
-            List<String> operators = all.stream()
-                .filter(op -> country.equals(op.getCountry()))
-                .map(Operadoras::getOperadora)
+            List<ChipModel> countryNumbers = chipRepository.findByCountryAndAlugadoAndAtivo(country, false, true);
+            List<String> operators = countryNumbers.stream()
+                .map(ChipModel::getOperadora)
                 .distinct()
                 .collect(Collectors.toList());
                 
-            logger.debug("Found {} operators for country {}", operators.size(), country);
+            logger.info("🔍 Found {} operators for country {}: {}", operators.size(), country, operators);
             return operators;
         } catch (Exception e) {
-            logger.error("Error getting operators for country: {}", country, e);
-            return List.of("tim", "vivo", "claro"); // Fallback
+            logger.error("❌ Error getting operators for country: {}", country, e);
+            return List.of(); // Return empty list on error
         }
     }
     
     /**
-     * Get all valid countries
+     * Get all valid countries using chip_model
      */
     public List<String> getAllValidCountries() {
         try {
-            List<Operadoras> all = operadorasRepository.findAll();
-            List<String> countries = all.stream()
-                .map(Operadoras::getCountry)
+            List<ChipModel> allNumbers = chipRepository.findByAlugadoAndAtivoRandomOrderWithLimit(false, true);
+            List<String> countries = allNumbers.stream()
+                .map(ChipModel::getCountry)
                 .distinct()
                 .collect(Collectors.toList());
                 
-            logger.debug("Found {} valid countries", countries.size());
+            logger.info("🔍 Found {} valid countries: {}", countries.size(), countries);
             return countries;
         } catch (Exception e) {
-            logger.error("Error getting valid countries", e);
-            return List.of("73", "36"); // Fallback
+            logger.error("❌ Error getting valid countries", e);
+            return List.of(); // Return empty list on error
         }
     }
     
     /**
-     * Warm up the cache
+     * Warm up the cache using chip_model data
      */
     public void warmUpCache() {
         try {
-            logger.info("🔥 Warming up country+operator validation cache...");
+            logger.info("🔥 Warming up country+operator validation cache using chip_model...");
             
-            List<Operadoras> all = operadorasRepository.findAll();
+            List<ChipModel> allNumbers = chipRepository.findByAlugadoAndAtivoRandomOrderWithLimit(false, true);
             
-            // Pre-validate common combinations
-            for (Operadoras op : all) {
-                isValidCombination(op.getCountry(), op.getOperadora());
-                isValidCountry(op.getCountry());
+            // Pre-validate all country+operator combinations
+            for (ChipModel chip : allNumbers) {
+                isValidCombination(chip.getCountry(), chip.getOperadora());
+                isValidCountry(chip.getCountry());
             }
             
-            logger.info("✅ Cache warmed up with {} combinations", all.size());
+            logger.info("✅ Cache warmed up with {} chip_model records", allNumbers.size());
         } catch (Exception e) {
             logger.error("❌ Error warming up cache", e);
         }
