@@ -100,12 +100,13 @@ rm -rf target/ || true
 echo "🔨 FORCE BUILDING application images from scratch (100% fresh)..."
 echo "⏱️ Setting build timeout to 30 minutes to prevent context cancellation..."
 
-# Disable BuildKit to avoid bake issues on EC2
+# Disable BuildKit completely to avoid bake issues on EC2
 export DOCKER_BUILDKIT=0
 export COMPOSE_DOCKER_CLI_BUILD=0
+unset BUILDKIT_PROGRESS
 
-# Build store24h-api with timeout and retry logic
-echo "🔨 Building store24h-api..."
+# Build store24h-api using direct docker build (bypass compose bake)
+echo "🔨 Building store24h-api using direct docker build..."
 BUILD_ATTEMPTS=0
 MAX_ATTEMPTS=3
 
@@ -113,7 +114,8 @@ while [ $BUILD_ATTEMPTS -lt $MAX_ATTEMPTS ]; do
     BUILD_ATTEMPTS=$((BUILD_ATTEMPTS + 1))
     echo "🔄 Build attempt $BUILD_ATTEMPTS/$MAX_ATTEMPTS..."
     
-    if timeout 1800 $DOCKER_COMPOSE_CMD build --no-cache --pull store24h-api; then
+    # Use direct docker build instead of compose build
+    if timeout 1800 $DOCKER_CMD build --no-cache --pull -t store24h-api .; then
         echo "✅ store24h-api built successfully!"
         break
     else
@@ -130,9 +132,11 @@ while [ $BUILD_ATTEMPTS -lt $MAX_ATTEMPTS ]; do
     fi
 done
 
-# Build hono-accelerator
-echo "🔨 Building hono-accelerator..."
-timeout 600 $DOCKER_COMPOSE_CMD build --no-cache --pull hono-accelerator
+# Build hono-accelerator using direct docker build
+echo "🔨 Building hono-accelerator using direct docker build..."
+cd hono-accelerator
+timeout 600 $DOCKER_CMD build --no-cache --pull -t hono-accelerator .
+cd ..
 
 # Optionally refresh infra if explicitly requested
 if [ "$REBUILD_INFRA" = "true" ]; then
