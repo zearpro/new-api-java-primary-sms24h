@@ -1,11 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Toaster } from 'react-hot-toast'
-import {
-	Database,
-	RefreshCw,
-	Clock,
-} from 'lucide-react'
+import { Database, RefreshCw, Clock } from 'lucide-react'
 
 import { WarmupStatus } from './components/WarmupStatus'
 import { RedisHealth } from './components/RedisHealth'
