@@ -30,7 +30,7 @@ services:
     ports:
       - "6379:6379"
     command: >
-      --maxmemory=24gb
+      --maxmemory=8gb
       --maxmemory-policy=allkeys-lru
       --save=900,1,300,10,60,10000
       --tcp-keepalive=60
@@ -54,17 +54,17 @@ services:
     deploy:
       resources:
         limits:
-          memory: 24G
-          cpus: '2.0'
-        reservations:
-          memory: 20G
+          memory: 12G
           cpus: '1.0'
+        reservations:
+          memory: 8G
+          cpus: '0.5'
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 10s
+      start_period: 30s
 
   # Hono.js Accelerator Microservice
   hono-accelerator:
