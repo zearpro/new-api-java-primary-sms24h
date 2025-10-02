@@ -61,12 +61,14 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.Set;
 import java.util.stream.Collectors;
 import javax.persistence.EntityManager;
 import javax.persistence.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -114,6 +116,9 @@ public class PublicApiService {
 
     @Autowired
     private RedisSetService redisSetService;
+
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
 
     @Autowired
     private VelocityApiService velocityApiService;
@@ -197,42 +202,56 @@ public class PublicApiService {
                     numeroDisponivelList = servicoOptional.get().getAlias().equals("wa") ? (tentativaNum == 0 ? this.chipRepository.findByAlugadoAndAtivoAndOperadoraAndVendawhatsappIn(false, true, operator.get(), valoresVendawhatsapp, limite) : this.chipRepository.findByAlugadoAndAtivoAndOperadoraAndVendawhatsappInAndService(false, true, operator.get(), valoresVendawhatsapp, servicoOptional.get().getAlias(), limite)) : (tentativaNum == 0 ? this.chipRepository.findByAlugadoAndAtivoAndOperadora((Boolean)false, (Boolean)true, operator.get(), limite) : this.chipRepository.findByAlugadoAndAtivoAndOperadoraAndService(false, true, operator.get(), servicoOptional.get().getAlias(), limite));
                     Utils.calcTime(startTimeOperacao, startTimeTrecho, "Buscar numeros ativos com FILTRO DE OPERADORA");
                 } else {
-                    List<String> numeros = new ArrayList<>();
-                    boolean executaQuery = false;
-                    if (!isGetExtra && executaQuery) {
-                        startTimeTrecho = System.nanoTime();
-                        String queryStr = "select distinct(cm.number) as number from chip_model cm inner join\n                    coredb.activation  a on a.chip_number=cm.number\n                    where (alias_service = \"" + service.get() + "\" or alias_service = \"" + service.get() + "_finalizada\")                    and cm.ativo=1 and date(initial_time)>curdate()-interval 20 day order by a.id desc limit 5000;";
-                        Query q = this.em.createNativeQuery(queryStr);
-                        numeros = q.getResultList();
-                        Utils.calcTime(startTimeOperacao, startTimeTrecho, "Tempo gasto para a query dos numeros q ja possuem o servico");
-                    }
-                    ArrayList<String> numeroArray = new ArrayList<String>();
+                    // ✅ OPTIMIZATION: For operator=any, try cache first, then MySQL fallback
                     startTimeTrecho = System.nanoTime();
-                    // ✅ FIXED: Use country-aware queries when operator=any to ensure proper country filtering
-                    if (servicoOptional.get().getAlias().equals("wa")) {
-                        if (tentativaNum == 0) {
-                            numeroDisponivelList = this.chipRepository.findByCountryAndAlugadoAndAtivoAndVendawhatsappIn(country.get(), false, true, valoresVendawhatsapp);
+                    numeroDisponivelList = this.findNumbersFromCacheFirst(country.get(), service.get(), valoresVendawhatsapp, tentativaNum, limite);
+                    Utils.calcTime(startTimeOperacao, startTimeTrecho, "Buscar numeros do CACHE primeiro (operator=any)");
+                    
+                    // If cache didn't return numbers, fallback to MySQL
+                    if (numeroDisponivelList == null || numeroDisponivelList.isEmpty()) {
+                        this.logger.info("CACHE MISS: No numbers found in cache for country={}, service={}, falling back to MySQL", country.get(), service.get());
+                        startTimeTrecho = System.nanoTime();
+                        
+                        List<String> numeros = new ArrayList<>();
+                        boolean executaQuery = false;
+                        if (!isGetExtra && executaQuery) {
+                            String queryStr = "select distinct(cm.number) as number from chip_model cm inner join\n                    coredb.activation  a on a.chip_number=cm.number\n                    where (alias_service = \"" + service.get() + "\" or alias_service = \"" + service.get() + "_finalizada\")                    and cm.ativo=1 and date(initial_time)>curdate()-interval 20 day order by a.id desc limit 5000;";
+                            Query q = this.em.createNativeQuery(queryStr);
+                            numeros = q.getResultList();
+                            Utils.calcTime(startTimeOperacao, startTimeTrecho, "Tempo gasto para a query dos numeros q ja possuem o servico");
+                        }
+                        
+                        // ✅ FIXED: Use country-aware queries when operator=any to ensure proper country filtering
+                        if (servicoOptional.get().getAlias().equals("wa")) {
+                            if (tentativaNum == 0) {
+                                numeroDisponivelList = this.chipRepository.findByCountryAndAlugadoAndAtivoAndVendawhatsappIn(country.get(), false, true, valoresVendawhatsapp);
+                            } else {
+                                // Note: Need to add findByCountryAndAlugadoAndAtivoAndVendawhatsappInAndService method if needed
+                                numeroDisponivelList = this.chipRepository.findByAlugadoAndAtivoAndVendawhatsappInAndService(false, true, valoresVendawhatsapp, servicoOptional.get().getAlias(), limite);
+                            }
                         } else {
-                            // Note: Need to add findByCountryAndAlugadoAndAtivoAndVendawhatsappInAndService method if needed
-                            numeroDisponivelList = this.chipRepository.findByAlugadoAndAtivoAndVendawhatsappInAndService(false, true, valoresVendawhatsapp, servicoOptional.get().getAlias(), limite);
+                            if (tentativaNum == 0) {
+                                numeroDisponivelList = this.chipRepository.findByCountryAndAlugadoAndAtivo(country.get(), false, true);
+                            } else {
+                                numeroDisponivelList = this.chipRepository.findByCountryAndAlugadoAndAtivoAndService(country.get(), false, true, servicoOptional.get().getAlias());
+                            }
+                        }
+                        Utils.calcTime(startTimeOperacao, startTimeTrecho, "Buscar numeros ativos SEM FILTRO DE OPERADORA (MySQL fallback)");
+                        this.logger.info("DEV_TESTE:PublicAPI: NUMEROS RETORNADOS ANTES DE FILTRAR: {} ", (Object)numeroDisponivelList.size());
+                        
+                        if (!isGetExtra) {
+                            startTimeTrecho = System.nanoTime();
+                            if (!servicoOptional.get().getAlias().equals("ot")) {
+                                numeroDisponivelList = this.mongoService.numerosQueNaoForamUsadosNesseServico(numeroDisponivelList, service.get(), limiteMongo);
+                            }
+                            Utils.calcTime(startTimeOperacao, startTimeTrecho, "BUSCANDO NO MONGO OS NUMEROS QUE NAO FORAM USADOS NESSE SERVICO COM BASE NA QUERY DOS NUMEROS ATIVOS");
+                            this.logger.info("DEV_TESTE:PublicAPI: NUMEROS RETORNADOS DEPOIS DE FILTRAR: {} ", (Object)numeroDisponivelList.size());
                         }
                     } else {
-                        if (tentativaNum == 0) {
-                            numeroDisponivelList = this.chipRepository.findByCountryAndAlugadoAndAtivo(country.get(), false, true);
-                        } else {
-                            numeroDisponivelList = this.chipRepository.findByCountryAndAlugadoAndAtivoAndService(country.get(), false, true, servicoOptional.get().getAlias());
-                        }
+                        this.logger.info("CACHE HIT: Found {} numbers in cache for country={}, service={}", numeroDisponivelList.size(), country.get(), service.get());
                     }
-                    Utils.calcTime(startTimeOperacao, startTimeTrecho, "Buscar numeros ativos SEM FILTRO DE OPERADORA");
-                    this.logger.info("DEV_TESTE:PublicAPI: NUMEROS RETORNADOS ANTES DE FILTRAR: {} ", (Object)numeroDisponivelList.size());
-                    if (!isGetExtra) {
-                        startTimeTrecho = System.nanoTime();
-                        if (!servicoOptional.get().getAlias().equals("ot")) {
-                            numeroDisponivelList = this.mongoService.numerosQueNaoForamUsadosNesseServico(numeroDisponivelList, service.get(), limiteMongo);
-                        }
-                        Utils.calcTime(startTimeOperacao, startTimeTrecho, "BUSCANDO NO MONGO OS NUMEROS QUE NAO FORAM USADOS NESSE SERVICO COM BASE NA QUERY DOS NUMEROS ATIVOS");
-                        this.logger.info("DEV_TESTE:PublicAPI: NUMEROS RETORNADOS DEPOIS DE FILTRAR: {} ", (Object)numeroDisponivelList.size());
-                    }
+                    
+                    ArrayList<String> numeroArray = new ArrayList<String>();
                     for (int i = 0; i < numeroDisponivelList.size(); ++i) {
                         numeroArray.add(numeroDisponivelList.get(i).getNumber());
                     }
@@ -614,6 +633,89 @@ public class PublicApiService {
         } catch (Exception e) {
             this.logger.error("Error calculating count for {}:{}:{}", country, operator.orElse("any"), serviceAlias, e);
             return 100; // Return reasonable default on error
+        }
+    }
+
+    /**
+     * ✅ OPTIMIZATION: Find numbers from cache first for operator=any requests
+     * This method tries to get available numbers directly from Redis/DragonflyDB cache
+     * without querying MySQL, making the API much faster for operator=any requests.
+     * 
+     * @param country Country code
+     * @param service Service alias (wa, ig, fb, tg, etc.)
+     * @param valoresVendawhatsapp WhatsApp enabled values
+     * @param tentativaNum Attempt number (0 = first attempt, 1 = second attempt)
+     * @param limite Limit for results
+     * @return List of available ChipModel objects from cache, or empty list if cache miss
+     */
+    private List<ChipModel> findNumbersFromCacheFirst(String country, String service, List<String> valoresVendawhatsapp, int tentativaNum, int limite) {
+        try {
+            this.logger.debug("🔍 Searching cache for country={}, service={}, attempt={}", country, service, tentativaNum);
+            
+            // Try to get numbers from Redis/DragonflyDB cache using pattern matching
+            Set<String> cacheKeys = redisTemplate.keys("chip_model:*");
+            if (cacheKeys == null || cacheKeys.isEmpty()) {
+                this.logger.debug("Cache empty - no chip_model keys found");
+                return new ArrayList<>();
+            }
+            
+            List<ChipModel> availableNumbers = new ArrayList<>();
+            int processed = 0;
+            int maxProcess = Math.min(limite * 2, cacheKeys.size()); // Process more keys than needed for better selection
+            
+            for (String key : cacheKeys) {
+                if (processed >= maxProcess) break;
+                processed++;
+                
+                try {
+                    // Get chip data from cache
+                    Map<String, Object> chipData = (Map<String, Object>) redisTemplate.opsForValue().get(key);
+                    if (chipData == null) continue;
+                    
+                    // Convert cache data to ChipModel-like object for validation
+                    String chipCountry = (String) chipData.get("country");
+                    Boolean ativo = (Boolean) chipData.get("ativo");
+                    Boolean alugado = (Boolean) chipData.get("alugado");
+                    String vendawhatsapp = (String) chipData.get("vendawhatsapp");
+                    String number = (String) chipData.get("number");
+                    
+                    // Validate country match
+                    if (!country.equals(chipCountry)) continue;
+                    
+                    // Validate active and not rented
+                    if (!Boolean.TRUE.equals(ativo) || Boolean.TRUE.equals(alugado)) continue;
+                    
+                    // Validate WhatsApp if needed
+                    if ("wa".equals(service) && !valoresVendawhatsapp.contains(vendawhatsapp)) continue;
+                    
+                    // Create a minimal ChipModel object for compatibility
+                    ChipModel chipModel = new ChipModel();
+                    chipModel.setNumber(number);
+                    chipModel.setCountry(chipCountry);
+                    chipModel.setAtivo(ativo);
+                    chipModel.setAlugado(alugado);
+                    chipModel.setVendawhatsapp(vendawhatsapp);
+                    chipModel.setOperadora((String) chipData.get("operadora"));
+                    
+                    availableNumbers.add(chipModel);
+                    
+                    // Stop when we have enough numbers
+                    if (availableNumbers.size() >= limite) break;
+                    
+                } catch (Exception e) {
+                    this.logger.debug("Error processing cache key {}: {}", key, e.getMessage());
+                    continue;
+                }
+            }
+            
+            this.logger.info("🎯 Cache search completed: found {} available numbers for country={}, service={}", 
+                availableNumbers.size(), country, service);
+            
+            return availableNumbers;
+            
+        } catch (Exception e) {
+            this.logger.error("❌ Error searching cache for country={}, service={}: {}", country, service, e.getMessage());
+            return new ArrayList<>(); // Return empty list on error, will trigger MySQL fallback
         }
     }
 }
