@@ -332,6 +332,123 @@ public class WarmupStatusController {
     }
 
     /**
+     * Test data flow from MySQL to DragonflyDB for all tables
+     */
+    @GetMapping("/test-data-flow")
+    public ResponseEntity<Map<String, Object>> testDataFlow() {
+        Map<String, Object> result = new HashMap<>();
+        
+        try {
+            result.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+            result.put("status", "testing");
+            
+            // Test each table with 3 sample records
+            Map<String, Object> tableTests = new HashMap<>();
+            
+            // 1. Test chip_model table
+            try {
+                long mysqlCount = chipRepository.count();
+                Set<String> redisKeys = redisTemplate.keys("chip_model:*");
+                int redisCount = redisKeys != null ? redisKeys.size() : 0;
+                
+                Map<String, Object> chipModelTest = new HashMap<>();
+                chipModelTest.put("mysql_count", mysqlCount);
+                chipModelTest.put("redis_count", redisCount);
+                chipModelTest.put("sample_keys", redisKeys != null ? redisKeys.stream().limit(3).toList() : "No keys found");
+                tableTests.put("chip_model", chipModelTest);
+            } catch (Exception e) {
+                tableTests.put("chip_model", "error: " + e.getMessage());
+            }
+            
+            // 2. Test servicos table
+            try {
+                long mysqlCount = servicosRepository.count();
+                Set<String> redisKeys = redisTemplate.keys("servicos:*");
+                int redisCount = redisKeys != null ? redisKeys.size() : 0;
+                
+                Map<String, Object> servicosTest = new HashMap<>();
+                servicosTest.put("mysql_count", mysqlCount);
+                servicosTest.put("redis_count", redisCount);
+                servicosTest.put("sample_keys", redisKeys != null ? redisKeys.stream().limit(3).toList() : "No keys found");
+                tableTests.put("servicos", servicosTest);
+            } catch (Exception e) {
+                tableTests.put("servicos", "error: " + e.getMessage());
+            }
+            
+            // 3. Test operadoras table
+            try {
+                long mysqlCount = operadorasRepository.count();
+                Set<String> redisKeys = redisTemplate.keys("v_operadoras:*");
+                int redisCount = redisKeys != null ? redisKeys.size() : 0;
+                
+                Map<String, Object> operadorasTest = new HashMap<>();
+                operadorasTest.put("mysql_count", mysqlCount);
+                operadorasTest.put("redis_count", redisCount);
+                operadorasTest.put("sample_keys", redisKeys != null ? redisKeys.stream().limit(3).toList() : "No keys found");
+                tableTests.put("operadoras", operadorasTest);
+            } catch (Exception e) {
+                tableTests.put("operadoras", "error: " + e.getMessage());
+            }
+            
+            // 4. Test chip_number_control table
+            try {
+                long mysqlCount = chipNumberControlRepository.count();
+                Set<String> redisKeys = redisTemplate.keys("chip_number_control:*");
+                int redisCount = redisKeys != null ? redisKeys.size() : 0;
+                
+                Map<String, Object> chipNumberControlTest = new HashMap<>();
+                chipNumberControlTest.put("mysql_count", mysqlCount);
+                chipNumberControlTest.put("redis_count", redisCount);
+                chipNumberControlTest.put("sample_keys", redisKeys != null ? redisKeys.stream().limit(3).toList() : "No keys found");
+                tableTests.put("chip_number_control", chipNumberControlTest);
+            } catch (Exception e) {
+                tableTests.put("chip_number_control", "error: " + e.getMessage());
+            }
+            
+            // 5. Test usuario table
+            try {
+                long mysqlCount = userDbRepository.count();
+                Set<String> redisKeys = redisTemplate.keys("usuario:*");
+                int redisCount = redisKeys != null ? redisKeys.size() : 0;
+                
+                Map<String, Object> usuarioTest = new HashMap<>();
+                usuarioTest.put("mysql_count", mysqlCount);
+                usuarioTest.put("redis_count", redisCount);
+                usuarioTest.put("sample_keys", redisKeys != null ? redisKeys.stream().limit(3).toList() : "No keys found");
+                tableTests.put("usuario", usuarioTest);
+            } catch (Exception e) {
+                tableTests.put("usuario", "error: " + e.getMessage());
+            }
+            
+            // 6. Test activation table
+            try {
+                long mysqlCount = activationRepository.count();
+                Set<String> redisKeys = redisTemplate.keys("activation:*");
+                int redisCount = redisKeys != null ? redisKeys.size() : 0;
+                
+                Map<String, Object> activationTest = new HashMap<>();
+                activationTest.put("mysql_count", mysqlCount);
+                activationTest.put("redis_count", redisCount);
+                activationTest.put("sample_keys", redisKeys != null ? redisKeys.stream().limit(3).toList() : "No keys found");
+                tableTests.put("activation", activationTest);
+            } catch (Exception e) {
+                tableTests.put("activation", "error: " + e.getMessage());
+            }
+            
+            result.put("table_tests", tableTests);
+            result.put("status", "completed");
+            
+            return ResponseEntity.ok(result);
+            
+        } catch (Exception e) {
+            logger.error("❌ Error testing data flow", e);
+            result.put("status", "error");
+            result.put("error", e.getMessage());
+            return ResponseEntity.status(500).body(result);
+        }
+    }
+
+    /**
      * Trigger manual warmup for all tables
      */
     @GetMapping("/trigger")

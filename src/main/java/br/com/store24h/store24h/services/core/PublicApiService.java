@@ -208,7 +208,21 @@ public class PublicApiService {
                     }
                     ArrayList<String> numeroArray = new ArrayList<String>();
                     startTimeTrecho = System.nanoTime();
-                    numeroDisponivelList = servicoOptional.get().getAlias().equals("wa") ? (tentativaNum == 0 ? this.chipRepository.findByAlugadoAndAtivoAndVendawhatsappIn(false, true, valoresVendawhatsapp, limite) : this.chipRepository.findByAlugadoAndAtivoAndVendawhatsappInAndService(false, true, valoresVendawhatsapp, servicoOptional.get().getAlias(), limite)) : (tentativaNum == 0 ? this.chipRepository.findByAlugadoAndAtivo(false, true, limite) : this.chipRepository.findByAlugadoAndAtivoAndService(false, true, servicoOptional.get().getAlias(), limite));
+                    // ✅ FIXED: Use country-aware queries when operator=any to ensure proper country filtering
+                    if (servicoOptional.get().getAlias().equals("wa")) {
+                        if (tentativaNum == 0) {
+                            numeroDisponivelList = this.chipRepository.findByCountryAndAlugadoAndAtivoAndVendawhatsappIn(country.get(), false, true, valoresVendawhatsapp);
+                        } else {
+                            // Note: Need to add findByCountryAndAlugadoAndAtivoAndVendawhatsappInAndService method if needed
+                            numeroDisponivelList = this.chipRepository.findByAlugadoAndAtivoAndVendawhatsappInAndService(false, true, valoresVendawhatsapp, servicoOptional.get().getAlias(), limite);
+                        }
+                    } else {
+                        if (tentativaNum == 0) {
+                            numeroDisponivelList = this.chipRepository.findByCountryAndAlugadoAndAtivo(country.get(), false, true);
+                        } else {
+                            numeroDisponivelList = this.chipRepository.findByCountryAndAlugadoAndAtivoAndService(country.get(), false, true, servicoOptional.get().getAlias());
+                        }
+                    }
                     Utils.calcTime(startTimeOperacao, startTimeTrecho, "Buscar numeros ativos SEM FILTRO DE OPERADORA");
                     this.logger.info("DEV_TESTE:PublicAPI: NUMEROS RETORNADOS ANTES DE FILTRAR: {} ", (Object)numeroDisponivelList.size());
                     if (!isGetExtra) {

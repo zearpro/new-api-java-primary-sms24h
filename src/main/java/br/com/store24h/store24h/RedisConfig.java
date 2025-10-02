@@ -46,10 +46,10 @@ public class RedisConfig {
         String redisPort = System.getenv("REDIS_PORT");
         String redisPassword = System.getenv("REDIS_PASSWORD");
         
-        // Default to container configuration
-        if (redisHost == null) redisHost = "redis";
+        // Default to DragonflyDB container configuration
+        if (redisHost == null) redisHost = "dragonfly";
         if (redisPort == null) redisPort = "6379";
-        if (redisPassword == null) redisPassword = "store24h_redis_pass";
+        if (redisPassword == null) redisPassword = "";
         
         int port = Integer.parseInt(redisPort);
         
