@@ -19,11 +19,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -777,6 +783,76 @@ public class WarmupStatusController {
             errorResult.put("error", e.getMessage());
             errorResult.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
             return ResponseEntity.status(500).body(errorResult);
+        }
+    }
+
+    /**
+     * Serve the Progressive Seeding Dashboard HTML
+     */
+    @GetMapping("/dashboard")
+    public ResponseEntity<String> getDashboard() {
+        try {
+            logger.info("🌐 Serving Progressive Seeding Dashboard...");
+            
+            // Read the HTML file from the project root
+            String htmlContent = Files.readString(Paths.get("progressive-seeding-dashboard.html"));
+            
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.TEXT_HTML);
+            
+            return ResponseEntity.ok()
+                    .headers(headers)
+                    .body(htmlContent);
+                    
+        } catch (IOException e) {
+            logger.error("❌ Error reading dashboard HTML file", e);
+            
+            // Fallback HTML if file not found
+            String fallbackHtml = """
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Progressive Seeding Dashboard</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+                        .container { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+                        .error { color: #d32f2f; background: #ffebee; padding: 15px; border-radius: 5px; margin: 20px 0; }
+                        .info { color: #1976d2; background: #e3f2fd; padding: 15px; border-radius: 5px; margin: 20px 0; }
+                        .btn { background: #1976d2; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; margin: 5px; }
+                        .btn:hover { background: #1565c0; }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <h1>🚀 Progressive Seeding Dashboard</h1>
+                        <div class="error">
+                            <strong>⚠️ Dashboard HTML file not found!</strong><br>
+                            Expected file: progressive-seeding-dashboard.html<br>
+                            Error: """ + e.getMessage() + """
+                        </div>
+                        <div class="info">
+                            <strong>📋 Available API Endpoints:</strong><br>
+                            • <a href="/api/warmup/progressive/start">Start Progressive Seeding</a><br>
+                            • <a href="/api/warmup/progressive/progress">Get Progress</a><br>
+                            • <a href="/api/warmup/batch/servicos">Process Services Batch</a><br>
+                            • <a href="/api/warmup/batch/operadoras">Process Operators Batch</a><br>
+                            • <a href="/api/warmup/batch/chip-model">Process Chip Model Batch</a><br>
+                            • <a href="/api/warmup/batch/chip-control">Process Chip Control Batch</a><br>
+                            • <a href="/api/warmup/batch/activation">Process Activation Batch</a><br>
+                        </div>
+                        <button class="btn" onclick="window.location.href='/api/warmup/progressive/start'">🚀 Start Seeding</button>
+                        <button class="btn" onclick="window.location.href='/api/warmup/progressive/progress'">📊 Check Progress</button>
+                    </div>
+                </body>
+                </html>
+                """;
+            
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.TEXT_HTML);
+            
+            return ResponseEntity.ok()
+                    .headers(headers)
+                    .body(fallbackHtml);
         }
     }
 }
