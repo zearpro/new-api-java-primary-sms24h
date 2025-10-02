@@ -35,10 +35,10 @@ public class ProgressiveSeedingService {
 
     private static final Logger logger = LoggerFactory.getLogger(ProgressiveSeedingService.class);
     
-    // Batch sizes - small to avoid timeouts
-    private static final int BATCH_SIZE_SMALL = 200;  // For small tables
-    private static final int BATCH_SIZE_MEDIUM = 500; // For medium tables
-    private static final int BATCH_SIZE_LARGE = 1000; // For large tables
+    // Batch sizes - optimized for 2000-3000 records per batch
+    private static final int BATCH_SIZE_SMALL = 2000;  // For small tables
+    private static final int BATCH_SIZE_MEDIUM = 2500; // For medium tables
+    private static final int BATCH_SIZE_LARGE = 3000;  // For large tables
     
     // Progress tracking keys
     private static final String PROGRESS_KEY_PREFIX = "seeding_progress:";
