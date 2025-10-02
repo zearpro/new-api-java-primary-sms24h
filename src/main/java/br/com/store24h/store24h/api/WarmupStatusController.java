@@ -7,6 +7,7 @@ import br.com.store24h.store24h.services.OptimizedUserCacheService;
 import br.com.store24h.store24h.services.PersistentTablesSyncService;
 import br.com.store24h.store24h.services.RedisSetService;
 import br.com.store24h.store24h.services.VelocityApiService;
+import br.com.store24h.store24h.services.FastWarmupService;
 import br.com.store24h.store24h.repository.ChipRepository;
 import br.com.store24h.store24h.repository.ServicosRepository;
 import br.com.store24h.store24h.repository.OperadorasRepository;
@@ -84,6 +85,9 @@ public class WarmupStatusController {
 
     @Autowired
     private ActivationRepository activationRepository;
+
+    @Autowired
+    private FastWarmupService fastWarmupService;
 
     /**
      * Get comprehensive warmup status for all cached tables
@@ -329,6 +333,25 @@ public class WarmupStatusController {
         }
         
         return progress;
+    }
+
+    /**
+     * Fast initial seeding - optimized for speed with batching and parallel processing
+     */
+    @GetMapping("/fast-seed")
+    public ResponseEntity<Map<String, Object>> fastInitialSeeding() {
+        try {
+            logger.info("🚀 Starting FAST initial seeding...");
+            Map<String, Object> result = fastWarmupService.performFastInitialSeeding();
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            logger.error("❌ Error during fast initial seeding", e);
+            Map<String, Object> errorResult = new HashMap<>();
+            errorResult.put("status", "error");
+            errorResult.put("error", e.getMessage());
+            errorResult.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+            return ResponseEntity.status(500).body(errorResult);
+        }
     }
 
     /**
