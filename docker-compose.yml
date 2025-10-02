@@ -31,19 +31,6 @@ services:
       - "6379:6379"
     command: >
       --maxmemory=8gb
-      --maxmemory-policy=allkeys-lru
-      --save=900,1,300,10,60,10000
-      --tcp-keepalive=60
-      --timeout=0
-      --tcp-backlog=511
-      --databases=16
-      --stop-writes-on-bgsave-error=no
-      --rdbcompression=yes
-      --rdbchecksum=yes
-      --appendonly=yes
-      --appendfsync=everysec
-      --auto-aof-rewrite-percentage=100
-      --auto-aof-rewrite-min-size=64mb
       --logtostderr
       --v=1
     volumes:
@@ -51,13 +38,6 @@ services:
     networks:
       - app-network
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 12G
-          cpus: '1.0'
-        reservations:
-          memory: 8G
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s
@@ -151,14 +131,6 @@ services:
     restart: unless-stopped
     networks:
       - app-network
-    deploy:
-      resources:
-        limits:
-          memory: 6G
-          cpus: '6.0'
-        reservations:
-          memory: 4G
-          cpus: '4.0'
 
 volumes:
   dragonfly_data:
