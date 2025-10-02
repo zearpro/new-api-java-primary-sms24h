@@ -28,8 +28,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Paths;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -794,8 +794,13 @@ public class WarmupStatusController {
         try {
             logger.info("🌐 Serving Progressive Seeding Dashboard...");
             
-            // Read the HTML file from the project root
-            String htmlContent = Files.readString(Paths.get("progressive-seeding-dashboard.html"));
+            // Read the HTML file from resources
+            InputStream inputStream = getClass().getClassLoader().getResourceAsStream("progressive-seeding-dashboard.html");
+            if (inputStream == null) {
+                throw new IOException("progressive-seeding-dashboard.html not found in resources");
+            }
+            String htmlContent = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+            inputStream.close();
             
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.TEXT_HTML);
