@@ -6,7 +6,7 @@ set -e
 echo "🚀 MODO DESENVOLVEDOR - Dragonfly Performance Edition"
 echo "Iniciando todos os serviços em modo de desenvolvimento..."
 echo "As alterações nos arquivos Java serão aplicadas em tempo real."
-echo "Dashboard disponível em: http://localhost:3000"
+echo "API disponível em: http://localhost:80"
 echo "Pressione Ctrl+C para parar todos os contêineres."
 
 # Define the environment file for development
@@ -49,12 +49,11 @@ set +o allexport
 echo "🧹 Limpando contêineres existentes..."
 docker-compose down --remove-orphans || true
 
-# Build and start all services with Dragonfly and Dashboard
+# Build and start all services with Dragonfly
 echo "🔨 Construindo e iniciando todos os serviços..."
 echo "📊 Serviços incluídos:"
 echo "  - DragonflyDB (Redis alternativo de alta performance)"
 echo "  - Store24h API (Spring Boot)"
-echo "  - Dashboard React (Monitoramento em tempo real)"
 echo "  - RabbitMQ (Message Queue)"
 echo "  - Hono.js Accelerator"
 

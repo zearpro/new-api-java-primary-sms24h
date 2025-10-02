@@ -66,40 +66,6 @@ services:
       retries: 5
       start_period: 10s
 
-  # Beautiful React Dashboard
-  dashboard:
-    build:
-      context: ./dashboard
-      dockerfile: Dockerfile
-    container_name: store24h-dashboard
-    ports:
-      - "3000:3000"
-    environment:
-      - REACT_APP_API_URL=http://store24h-api:80
-      - REACT_APP_DRAGONFLY_URL=dragonfly://dragonfly:6379
-      - REACT_APP_DASHBOARD_TITLE=Store24h Warmup Dashboard
-      - REACT_APP_DASHBOARD_SUBTITLE=Dragonfly Performance Monitor
-    depends_on:
-      store24h-api:
-        condition: service_started
-    restart: unless-stopped
-    networks:
-      - app-network
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-          cpus: '0.5'
-        reservations:
-          memory: 512M
-          cpus: '0.25'
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-
   # Hono.js Accelerator Microservice
   hono-accelerator:
     build: ./hono-accelerator
