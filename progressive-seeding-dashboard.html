@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Progressive Seeding Dashboard</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 2.5em;
+            font-weight: 300;
+        }
+        
+        .header p {
+            margin: 10px 0 0 0;
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .btn {
+            padding: 15px 25px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+        }
+        
+        .btn-warning {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+        }
+        
+        .progress-section {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 25px;
+            margin-bottom: 20px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4facfe 0%, #00f2fe 100%);
+            transition: width 0.5s ease;
+            border-radius: 10px;
+        }
+        
+        .table-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .table-card {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            border-left: 4px solid #4facfe;
+        }
+        
+        .table-card h3 {
+            margin: 0 0 15px 0;
+            color: #333;
+            font-size: 1.3em;
+        }
+        
+        .status {
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 0.9em;
+            font-weight: 600;
+            display: inline-block;
+            margin: 5px 0;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .status.processing {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .auto-reload {
+            background: #e3f2fd;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .auto-reload h3 {
+            margin: 0 0 10px 0;
+            color: #1976d2;
+        }
+        
+        .log {
+            background: #1e1e1e;
+            color: #00ff00;
+            padding: 20px;
+            border-radius: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+        
+        .timestamp {
+            color: #888;
+            font-size: 0.9em;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Progressive Seeding Dashboard</h1>
+            <p>Timeout-resistant batch seeding with auto-reload functionality</p>
+        </div>
+        
+        <div class="content">
+            <div class="auto-reload">
+                <h3>🔄 Auto-Reload System</h3>
+                <p>This dashboard automatically reloads and continues seeding when batches complete.</p>
+                <p><strong>Status:</strong> <span id="autoReloadStatus">Ready</span></p>
+            </div>
+            
+            <div class="controls">
+                <button class="btn btn-primary" onclick="startProgressiveSeeding()">🚀 Start Progressive Seeding</button>
+                <button class="btn btn-success" onclick="processAllBatches()">⚡ Process All Batches</button>
+                <button class="btn btn-warning" onclick="resetProgress()">🔄 Reset Progress</button>
+                <button class="btn btn-primary" onclick="refreshProgress()">📊 Refresh Progress</button>
+            </div>
+            
+            <div class="progress-section">
+                <h3>📈 Overall Progress</h3>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="overallProgress" style="width: 0%"></div>
+                </div>
+                <p id="overallStats">Ready to start...</p>
+            </div>
+            
+            <div class="table-grid" id="tableGrid">
+                <!-- Table progress cards will be populated here -->
+            </div>
+            
+            <div class="log" id="log">
+                <div>🚀 Progressive Seeding Dashboard initialized</div>
+                <div>📅 Ready to start batch processing...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let isProcessing = false;
+        let autoReloadInterval = null;
+        
+        // Logging function
+        function log(message) {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `<div>[${timestamp}] ${message}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+        
+        // Update auto-reload status
+        function updateAutoReloadStatus(status) {
+            document.getElementById('autoReloadStatus').textContent = status;
+        }
+        
+        // Start progressive seeding
+        async function startProgressiveSeeding() {
+            try {
+                log('🚀 Starting progressive seeding system...');
+                const response = await fetch('/api/warmup/progressive/start');
+                const result = await response.json();
+                
+                if (result.status === 'started') {
+                    log('✅ Progressive seeding initialized successfully');
+                    log('📋 Available batch endpoints: ' + result.batch_endpoints.join(', '));
+                    updateAutoReloadStatus('Initialized');
+                } else {
+                    log('❌ Error: ' + result.error);
+                }
+            } catch (error) {
+                log('❌ Network error: ' + error.message);
+            }
+        }
+        
+        // Process a single batch
+        async function processBatch(endpoint, tableName) {
+            try {
+                log(`🔥 Processing ${tableName} batch...`);
+                const response = await fetch(`/api/warmup/batch/${endpoint}`);
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    log(`✅ ${tableName}: ${result.batch_size} records processed (${result.total_processed}/${result.total_records})`);
+                    return result.next_batch_available;
+                } else if (result.status === 'completed') {
+                    log(`🎉 ${tableName}: All records completed (${result.total_processed}/${result.total_records})`);
+                    return false;
+                } else {
+                    log(`❌ ${tableName} error: ${result.error}`);
+                    return false;
+                }
+            } catch (error) {
+                log(`❌ ${tableName} network error: ${error.message}`);
+                return false;
+            }
+        }
+        
+        // Process all batches
+        async function processAllBatches() {
+            if (isProcessing) {
+                log('⚠️ Already processing batches...');
+                return;
+            }
+            
+            isProcessing = true;
+            updateAutoReloadStatus('Processing');
+            log('🚀 Starting batch processing for all tables...');
+            
+            const batches = [
+                { endpoint: 'servicos', name: 'Services' },
+                { endpoint: 'operadoras', name: 'Operators' },
+                { endpoint: 'chip-model', name: 'Chip Model' },
+                { endpoint: 'chip-control', name: 'Chip Control' },
+                { endpoint: 'activation', name: 'Activation' }
+            ];
+            
+            let hasMoreBatches = true;
+            let batchCount = 0;
+            
+            while (hasMoreBatches && batchCount < 100) { // Safety limit
+                hasMoreBatches = false;
+                batchCount++;
+                
+                log(`📦 Processing batch round ${batchCount}...`);
+                
+                for (const batch of batches) {
+                    const hasMore = await processBatch(batch.endpoint, batch.name);
+                    if (hasMore) {
+                        hasMoreBatches = true;
+                    }
+                    
+                    // Small delay between batches
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+                
+                // Refresh progress after each round
+                await refreshProgress();
+                
+                // Auto-reload delay
+                if (hasMoreBatches) {
+                    log('⏳ Waiting 2 seconds before next batch round...');
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                }
+            }
+            
+            isProcessing = false;
+            updateAutoReloadStatus('Completed');
+            log('🎉 All batch processing completed!');
+        }
+        
+        // Refresh progress
+        async function refreshProgress() {
+            try {
+                const response = await fetch('/api/warmup/progressive/progress');
+                const result = await response.json();
+                
+                // Update overall progress
+                if (result.overall_progress) {
+                    const percentage = result.overall_progress.percentage;
+                    document.getElementById('overallProgress').style.width = percentage + '%';
+                    document.getElementById('overallStats').textContent = 
+                        `${result.overall_progress.total_processed}/${result.overall_progress.total_records} records processed (${percentage}%)`;
+                }
+                
+                // Update table cards
+                updateTableCards(result);
+                
+            } catch (error) {
+                log('❌ Error refreshing progress: ' + error.message);
+            }
+        }
+        
+        // Update table progress cards
+        function updateTableCards(progressData) {
+            const tableGrid = document.getElementById('tableGrid');
+            const tables = [
+                { key: 'servicos', name: 'Services', color: '#4facfe' },
+                { key: 'operadoras', name: 'Operators', color: '#00f2fe' },
+                { key: 'chip_model', name: 'Chip Model', color: '#667eea' },
+                { key: 'chip_number_control', name: 'Chip Control', color: '#764ba2' },
+                { key: 'activation', name: 'Activation', color: '#f093fb' }
+            ];
+            
+            tableGrid.innerHTML = '';
+            
+            tables.forEach(table => {
+                const tableData = progressData[table.key] || {};
+                const totalProcessed = tableData.total_processed || 0;
+                const totalRecords = tableData.total_records || 0;
+                const percentage = totalRecords > 0 ? Math.round((totalProcessed * 100) / totalRecords) : 0;
+                const isCompleted = totalProcessed >= totalRecords && totalRecords > 0;
+                
+                const card = document.createElement('div');
+                card.className = 'table-card';
+                card.style.borderLeftColor = table.color;
+                
+                card.innerHTML = `
+                    <h3>${table.name}</h3>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: ${percentage}%; background: ${table.color}"></div>
+                    </div>
+                    <div class="status ${isCompleted ? 'success' : 'processing'}">
+                        ${isCompleted ? '✅ Completed' : '🔄 Processing'}
+                    </div>
+                    <p>${totalProcessed}/${totalRecords} records (${percentage}%)</p>
+                    <div class="timestamp">Last updated: ${tableData.last_updated || 'Never'}</div>
+                `;
+                
+                tableGrid.appendChild(card);
+            });
+        }
+        
+        // Reset progress
+        async function resetProgress() {
+            try {
+                log('🔄 Resetting all progress...');
+                const response = await fetch('/api/warmup/progressive/reset', { method: 'POST' });
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    log('✅ All progress reset successfully');
+                    updateAutoReloadStatus('Reset');
+                    await refreshProgress();
+                } else {
+                    log('❌ Error resetting progress: ' + result.error);
+                }
+            } catch (error) {
+                log('❌ Network error: ' + error.message);
+            }
+        }
+        
+        // Auto-refresh every 5 seconds
+        function startAutoRefresh() {
+            autoReloadInterval = setInterval(async () => {
+                if (!isProcessing) {
+                    await refreshProgress();
+                }
+            }, 5000);
+        }
+        
+        // Initialize dashboard
+        function init() {
+            log('🎯 Dashboard initialized');
+            refreshProgress();
+            startAutoRefresh();
+        }
+        
+        // Start when page loads
+        window.onload = init;
+    </script>
+</body>
+</html>

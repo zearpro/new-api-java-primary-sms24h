@@ -8,6 +8,7 @@ import br.com.store24h.store24h.services.PersistentTablesSyncService;
 import br.com.store24h.store24h.services.RedisSetService;
 import br.com.store24h.store24h.services.VelocityApiService;
 import br.com.store24h.store24h.services.FastWarmupService;
+import br.com.store24h.store24h.services.ProgressiveSeedingService;
 import br.com.store24h.store24h.repository.ChipRepository;
 import br.com.store24h.store24h.repository.ServicosRepository;
 import br.com.store24h.store24h.repository.OperadorasRepository;
@@ -20,6 +21,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -88,6 +90,9 @@ public class WarmupStatusController {
 
     @Autowired
     private FastWarmupService fastWarmupService;
+    
+    @Autowired
+    private ProgressiveSeedingService progressiveSeedingService;
 
     /**
      * Get comprehensive warmup status for all cached tables
@@ -625,5 +630,153 @@ public class WarmupStatusController {
         tableInfo.put("row_count", count);
         tableInfo.put("last_updated", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
         return tableInfo;
+    }
+
+    // ==================== PROGRESSIVE BATCH SEEDING ENDPOINTS ====================
+
+    /**
+     * Start progressive seeding system
+     */
+    @GetMapping("/progressive/start")
+    public ResponseEntity<Map<String, Object>> startProgressiveSeeding() {
+        try {
+            logger.info("🚀 Starting progressive seeding system...");
+            Map<String, Object> result = progressiveSeedingService.startProgressiveSeeding();
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            logger.error("❌ Error starting progressive seeding", e);
+            Map<String, Object> errorResult = new HashMap<>();
+            errorResult.put("status", "error");
+            errorResult.put("error", e.getMessage());
+            errorResult.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+            return ResponseEntity.status(500).body(errorResult);
+        }
+    }
+
+    /**
+     * Process servicos table batch
+     */
+    @GetMapping("/batch/servicos")
+    public ResponseEntity<Map<String, Object>> processServicosBatch() {
+        try {
+            Map<String, Object> result = progressiveSeedingService.processServicosBatch();
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            logger.error("❌ Error processing servicos batch", e);
+            Map<String, Object> errorResult = new HashMap<>();
+            errorResult.put("status", "error");
+            errorResult.put("error", e.getMessage());
+            errorResult.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+            return ResponseEntity.status(500).body(errorResult);
+        }
+    }
+
+    /**
+     * Process operadoras table batch
+     */
+    @GetMapping("/batch/operadoras")
+    public ResponseEntity<Map<String, Object>> processOperadorasBatch() {
+        try {
+            Map<String, Object> result = progressiveSeedingService.processOperadorasBatch();
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            logger.error("❌ Error processing operadoras batch", e);
+            Map<String, Object> errorResult = new HashMap<>();
+            errorResult.put("status", "error");
+            errorResult.put("error", e.getMessage());
+            errorResult.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+            return ResponseEntity.status(500).body(errorResult);
+        }
+    }
+
+    /**
+     * Process chip_model table batch
+     */
+    @GetMapping("/batch/chip-model")
+    public ResponseEntity<Map<String, Object>> processChipModelBatch() {
+        try {
+            Map<String, Object> result = progressiveSeedingService.processChipModelBatch();
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            logger.error("❌ Error processing chip_model batch", e);
+            Map<String, Object> errorResult = new HashMap<>();
+            errorResult.put("status", "error");
+            errorResult.put("error", e.getMessage());
+            errorResult.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+            return ResponseEntity.status(500).body(errorResult);
+        }
+    }
+
+    /**
+     * Process chip_number_control table batch
+     */
+    @GetMapping("/batch/chip-control")
+    public ResponseEntity<Map<String, Object>> processChipNumberControlBatch() {
+        try {
+            Map<String, Object> result = progressiveSeedingService.processChipNumberControlBatch();
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            logger.error("❌ Error processing chip_number_control batch", e);
+            Map<String, Object> errorResult = new HashMap<>();
+            errorResult.put("status", "error");
+            errorResult.put("error", e.getMessage());
+            errorResult.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+            return ResponseEntity.status(500).body(errorResult);
+        }
+    }
+
+    /**
+     * Process activation table batch
+     */
+    @GetMapping("/batch/activation")
+    public ResponseEntity<Map<String, Object>> processActivationBatch() {
+        try {
+            Map<String, Object> result = progressiveSeedingService.processActivationBatch();
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            logger.error("❌ Error processing activation batch", e);
+            Map<String, Object> errorResult = new HashMap<>();
+            errorResult.put("status", "error");
+            errorResult.put("error", e.getMessage());
+            errorResult.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+            return ResponseEntity.status(500).body(errorResult);
+        }
+    }
+
+    /**
+     * Get overall progressive seeding progress
+     */
+    @GetMapping("/progressive/progress")
+    public ResponseEntity<Map<String, Object>> getProgressiveProgress() {
+        try {
+            Map<String, Object> result = progressiveSeedingService.getOverallProgress();
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            logger.error("❌ Error getting progressive progress", e);
+            Map<String, Object> errorResult = new HashMap<>();
+            errorResult.put("status", "error");
+            errorResult.put("error", e.getMessage());
+            errorResult.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+            return ResponseEntity.status(500).body(errorResult);
+        }
+    }
+
+    /**
+     * Reset all progressive seeding progress
+     */
+    @PostMapping("/progressive/reset")
+    public ResponseEntity<Map<String, Object>> resetProgressiveProgress() {
+        try {
+            logger.info("🔄 Resetting progressive seeding progress...");
+            Map<String, Object> result = progressiveSeedingService.resetProgress();
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            logger.error("❌ Error resetting progressive progress", e);
+            Map<String, Object> errorResult = new HashMap<>();
+            errorResult.put("status", "error");
+            errorResult.put("error", e.getMessage());
+            errorResult.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+            return ResponseEntity.status(500).body(errorResult);
+        }
     }
 }
