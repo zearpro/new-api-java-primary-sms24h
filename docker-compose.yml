@@ -55,6 +55,8 @@ services:
       - PORT=3000
       - DRAGONFLY_HOST=dragonfly
       - DRAGONFLY_PORT=6379
+      - REDIS_HOST=dragonfly
+      - REDIS_PORT=6379
     depends_on:
       dragonfly:
         condition: service_healthy
@@ -93,6 +95,9 @@ services:
       - DRAGONFLY_HOST=dragonfly
       - DRAGONFLY_PORT=6379
       - DRAGONFLY_PASSWORD=
+      - REDIS_HOST=dragonfly
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=
 
       # Database configuration
       - HIBERNATE_DDL_AUTO=${HIBERNATE_DDL_AUTO}
