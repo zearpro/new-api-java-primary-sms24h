@@ -9,6 +9,8 @@ import { TableProgress } from './components/TableProgress'
 import { ControlPanel } from './components/ControlPanel'
 import { MetricsOverview } from './components/MetricsOverview'
 import { PerformanceCharts } from './components/PerformanceCharts'
+import { MySQLStats } from './components/MySQLStats'
+import { RedisSeedingProgress } from './components/RedisSeedingProgress'
 
 function App() {
 	const [warmupData, setWarmupData] = useState(null)
@@ -157,6 +159,17 @@ function App() {
 						<RedisHealth data={warmupData?.redis} />
 					</motion.div>
 
+					{/* MySQL Stats and Redis Seeding Progress */}
+					<motion.div
+						initial={{ y: 20, opacity: 0 }}
+						animate={{ y: 0, opacity: 1 }}
+						transition={{ delay: 0.25 }}
+						className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8"
+					>
+						<MySQLStats data={warmupData} />
+						<RedisSeedingProgress data={warmupData} />
+					</motion.div>
+
 					{/* Performance Charts */}
 					<motion.div
 						initial={{ y: 20, opacity: 0 }}
@@ -183,7 +196,7 @@ function App() {
 						animate={{ y: 0, opacity: 1 }}
 						transition={{ delay: 0.5 }}
 					>
-						<ControlPanel onRefresh={fetchWarmupStatus} />
+						<ControlPanel onRefresh={fetchWarmupStatus} data={warmupData} />
 					</motion.div>
 				</AnimatePresence>
 			</main>

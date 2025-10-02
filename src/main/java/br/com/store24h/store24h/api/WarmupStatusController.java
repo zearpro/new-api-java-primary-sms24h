@@ -7,6 +7,12 @@ import br.com.store24h.store24h.services.OptimizedUserCacheService;
 import br.com.store24h.store24h.services.PersistentTablesSyncService;
 import br.com.store24h.store24h.services.RedisSetService;
 import br.com.store24h.store24h.services.VelocityApiService;
+import br.com.store24h.store24h.repository.ChipRepository;
+import br.com.store24h.store24h.repository.ServicosRepository;
+import br.com.store24h.store24h.repository.OperadorasRepository;
+import br.com.store24h.store24h.repository.ChipNumberControlRepository;
+import br.com.store24h.store24h.repository.UserDbRepository;
+import br.com.store24h.store24h.repository.ActivationRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -61,6 +67,24 @@ public class WarmupStatusController {
     @Autowired(required = false)
     private FullPersistenceService fullPersistenceService;
 
+    @Autowired
+    private ChipRepository chipRepository;
+
+    @Autowired
+    private ServicosRepository servicosRepository;
+
+    @Autowired
+    private OperadorasRepository operadorasRepository;
+
+    @Autowired
+    private ChipNumberControlRepository chipNumberControlRepository;
+
+    @Autowired
+    private UserDbRepository userDbRepository;
+
+    @Autowired
+    private ActivationRepository activationRepository;
+
     /**
      * Get comprehensive warmup status for all cached tables
      */
@@ -78,6 +102,9 @@ public class WarmupStatusController {
             
             // Table cache status
             status.put("tables", getTableCacheStatus());
+            
+            // Redis seeding progress
+            status.put("seeding_progress", getSeedingProgress());
             
             // Velocity layer status
             status.put("velocity", getVelocityStatus());
@@ -243,6 +270,68 @@ public class WarmupStatusController {
     }
 
     /**
+     * Get Redis seeding progress with percentages
+     */
+    private Map<String, Object> getSeedingProgress() {
+        Map<String, Object> progress = new HashMap<>();
+        
+        try {
+            Map<String, Object> tableStatus = getTableCacheStatus();
+            Map<String, Object> mysqlStats = getMysqlStats().getBody();
+            
+            if (mysqlStats != null && mysqlStats.containsKey("tables")) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> mysqlTables = (Map<String, Object>) mysqlStats.get("tables");
+                
+                Map<String, Object> tableProgress = new HashMap<>();
+                int totalProgress = 0;
+                int tableCount = 0;
+                
+                for (String tableName : tableStatus.keySet()) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> redisTable = (Map<String, Object>) tableStatus.get(tableName);
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> mysqlTable = (Map<String, Object>) mysqlTables.get(tableName);
+                    
+                    if (redisTable != null && mysqlTable != null) {
+                        long redisCount = (Long) redisTable.get("count");
+                        long mysqlCount = (Long) mysqlTable.get("row_count");
+                        
+                        int percentage = mysqlCount > 0 ? (int) ((redisCount * 100) / mysqlCount) : 0;
+                        percentage = Math.min(percentage, 100); // Cap at 100%
+                        
+                        Map<String, Object> progressInfo = new HashMap<>();
+                        progressInfo.put("redis_count", redisCount);
+                        progressInfo.put("mysql_count", mysqlCount);
+                        progressInfo.put("percentage", percentage);
+                        progressInfo.put("status", percentage >= 100 ? "complete" : (percentage > 0 ? "partial" : "empty"));
+                        
+                        tableProgress.put(tableName, progressInfo);
+                        totalProgress += percentage;
+                        tableCount++;
+                    }
+                }
+                
+                int overallProgress = tableCount > 0 ? totalProgress / tableCount : 0;
+                
+                progress.put("overall_percentage", overallProgress);
+                progress.put("table_progress", tableProgress);
+                progress.put("total_tables", tableCount);
+                progress.put("status", overallProgress >= 100 ? "complete" : (overallProgress > 0 ? "partial" : "empty"));
+                progress.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+            }
+            
+        } catch (Exception e) {
+            logger.error("❌ Error calculating seeding progress", e);
+            progress.put("error", e.getMessage());
+            progress.put("overall_percentage", 0);
+            progress.put("status", "error");
+        }
+        
+        return progress;
+    }
+
+    /**
      * Trigger manual warmup for all tables
      */
     @GetMapping("/trigger")
@@ -344,5 +433,57 @@ public class WarmupStatusController {
             details.put("error", e.getMessage());
             return ResponseEntity.status(500).body(details);
         }
+    }
+
+    /**
+     * Get MySQL table row counts and statistics
+     */
+    @GetMapping("/mysql-stats")
+    public ResponseEntity<Map<String, Object>> getMysqlStats() {
+        Map<String, Object> stats = new HashMap<>();
+        
+        try {
+            stats.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+            stats.put("status", "healthy");
+            
+            // Get row counts for each table
+            Map<String, Object> tableStats = new HashMap<>();
+            
+            // Core tables
+            tableStats.put("chip_model", getTableStats("chip_model", chipRepository.count()));
+            tableStats.put("servicos", getTableStats("servicos", servicosRepository.count()));
+            tableStats.put("operadoras", getTableStats("operadoras", operadorasRepository.count()));
+            tableStats.put("chip_number_control", getTableStats("chip_number_control", chipNumberControlRepository.count()));
+            tableStats.put("usuario", getTableStats("usuario", userDbRepository.count()));
+            tableStats.put("activation", getTableStats("activation", activationRepository.count()));
+            
+            // Calculate totals
+            long totalRows = chipRepository.count() + servicosRepository.count() + 
+                            operadorasRepository.count() + chipNumberControlRepository.count() + 
+                            userDbRepository.count() + activationRepository.count();
+            
+            stats.put("tables", tableStats);
+            stats.put("total_rows", totalRows);
+            stats.put("table_count", tableStats.size());
+            
+            return ResponseEntity.ok(stats);
+            
+        } catch (Exception e) {
+            logger.error("❌ Error getting MySQL stats", e);
+            stats.put("status", "error");
+            stats.put("error", e.getMessage());
+            return ResponseEntity.status(500).body(stats);
+        }
+    }
+
+    /**
+     * Helper method to create table statistics
+     */
+    private Map<String, Object> getTableStats(String tableName, long count) {
+        Map<String, Object> tableInfo = new HashMap<>();
+        tableInfo.put("name", tableName);
+        tableInfo.put("row_count", count);
+        tableInfo.put("last_updated", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+        return tableInfo;
     }
 }
