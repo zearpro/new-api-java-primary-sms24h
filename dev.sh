@@ -1,64 +1,40 @@
 #!/bin/bash
 
-# Exit immediately if a command exits with a non-zero status.
-set -e
+set -euo pipefail
 
-echo "🚀 MODO DESENVOLVEDOR - Dragonfly Performance Edition"
-echo "Iniciando todos os serviços em modo de desenvolvimento..."
-echo "As alterações nos arquivos Java serão aplicadas em tempo real."
-echo "API disponível em: http://localhost:80"
-echo "Pressione Ctrl+C para parar todos os contêineres."
+echo "🚀 DEV MODE - Local Redis, API, RabbitMQ, Hono"
+echo "API: http://localhost:80  |  Hono: http://localhost:3001"
 
-# Define the environment file for development
 ENV_FILE=.env.dev
-
-# Check if the dev environment file exists, if not, create it from the example.
 if [ ! -f "$ENV_FILE" ]; then
-    echo "AVISO: O arquivo de ambiente de desenvolvimento '$ENV_FILE' não foi encontrado."
-    echo "Copiando de '.env.example'. Por favor, revise as configurações."
-    cp .env.example "$ENV_FILE"
+  echo "⚠️  $ENV_FILE not found. Creating from .env.example"
+  cp .env.example "$ENV_FILE" || true
 fi
 
-# Check if Docker is running
-if ! docker ps &> /dev/null; then
-    echo "❌ Docker não está rodando. Por favor, inicie o Docker primeiro."
-    exit 1
+if ! docker ps >/dev/null 2>&1; then
+  echo "❌ Docker is not running. Start Docker first."
+  exit 1
 fi
 
-# Load environment variables safely
-echo "📄 Loading environment variables..."
+echo "📄 Loading $ENV_FILE ..."
 set -o allexport
-# Use a safer method to load env vars, avoiding command interpretation
 while IFS= read -r line; do
-    # Skip comments and empty lines
-    if [[ $line =~ ^[[:space:]]*# ]] || [[ -z "${line// }" ]]; then
-        continue
-    fi
-    # Skip problematic variables that might contain commands
-    if [[ $line =~ ^[[:space:]]*JAVA_OPTS ]] || [[ $line =~ ^[[:space:]]*NOT_CRON ]]; then
-        continue
-    fi
-    # Export the variable safely
-    if [[ $line =~ ^[[:space:]]*([^=]+)=(.*)$ ]]; then
-        export "${BASH_REMATCH[1]}"="${BASH_REMATCH[2]}"
-    fi
+  [[ $line =~ ^[[:space:]]*# ]] && continue
+  [[ -z "${line// }" ]] && continue
+  if [[ $line =~ ^[[:space:]]*([^=]+)=(.*)$ ]]; then
+    export "${BASH_REMATCH[1]}"="${BASH_REMATCH[2]}"
+  fi
 done < "$ENV_FILE"
 set +o allexport
 
-# Clean up any existing containers
-echo "🧹 Limpando contêineres existentes..."
-docker-compose down --remove-orphans || true
+echo "🧹 Cleaning previous stack..."
+docker compose -f docker-compose.dev.yml down --remove-orphans || true
 
-# Build and start all services with Dragonfly
-echo "🔨 Construindo e iniciando todos os serviços..."
-echo "📊 Serviços incluídos:"
-echo "  - DragonflyDB (Redis alternativo de alta performance)"
-echo "  - Store24h API (Spring Boot)"
-echo "  - RabbitMQ (Message Queue)"
-echo "  - Hono.js Accelerator"
+echo "🔨 Building & starting dev stack (local Redis)..."
+docker compose -f docker-compose.dev.yml up -d --build
 
-# Start docker-compose with the correct env file
-docker-compose --env-file "$ENV_FILE" up --build
+echo "📊 Status:" 
+docker compose -f docker-compose.dev.yml ps
 
-# Optional: Add a trap to ensure containers are stopped on exit
-trap "echo '🛑 Parando contêineres...'; docker-compose --env-file '$ENV_FILE' down; exit" INT TERM
+echo "🧪 Health check:"
+curl -fsS http://localhost:80/actuator/health || true
