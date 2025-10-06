@@ -71,6 +71,11 @@ services:
       - REDIS_SSL=true
       - REDIS_USERNAME=${REDIS_USERNAME:-}
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      # RabbitMQ for Spring
+      - SPRING_RABBITMQ_HOST=${RABBITMQ_HOST:-rabbitmq}
+      - SPRING_RABBITMQ_PORT=${RABBITMQ_PORT:-5672}
+      - SPRING_RABBITMQ_USERNAME=${RABBITMQ_USER:-guest}
+      - SPRING_RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD:-guest}
       # Warmup
       - CACHE_WARMING_ENABLED=${CACHE_WARMING_ENABLED:-true}
     depends_on:
