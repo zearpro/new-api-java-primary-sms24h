@@ -5,7 +5,6 @@ import br.com.store24h.store24h.repository.ServicosRepository;
 import br.com.store24h.store24h.repository.UserDbRepository;
 import br.com.store24h.store24h.model.Servico;
 import br.com.store24h.store24h.model.User;
-import br.com.store24h.store24h.services.UserBalanceService;
 import org.springframework.data.domain.Sort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,6 +20,7 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -55,6 +55,9 @@ public class CacheWarmingService {
 
     @Autowired
     private br.com.store24h.store24h.repository.ChipRepository chipRepository;
+
+    @Autowired
+    private org.springframework.data.redis.core.RedisTemplate<String, Object> redisTemplate;
     
     @Value("${cache.warming.enabled:true}")
     private boolean cacheWarmingEnabled;
@@ -81,6 +84,28 @@ public class CacheWarmingService {
     private long operatorsWarmingRate;
     
     private final ExecutorService warmingExecutor = Executors.newFixedThreadPool(4);
+
+    private boolean acquireWarmupLock(String lockKey, long ttlMillis) {
+        try {
+            Boolean ok = redisTemplate.opsForValue().setIfAbsent(lockKey, "1", ttlMillis, TimeUnit.MILLISECONDS);
+            return Boolean.TRUE.equals(ok);
+        } catch (Exception e) {
+            logger.warn("⚠️ Failed to acquire warmup lock {}: {}", lockKey, e.getMessage());
+            return false;
+        }
+    }
+
+    private void releaseWarmupLock(String lockKey) {
+        try {
+            redisTemplate.delete(lockKey);
+        } catch (Exception ignored) { }
+    }
+
+    private long ttlForRate(long rateMs) {
+        if (rateMs <= 0) return 600000; // default 10m
+        long ttl = Math.max(rateMs / 2, 300000); // at least 5m, half of rate otherwise
+        return ttl;
+    }
     
     /**
      * Initial cache warming on application startup
@@ -93,17 +118,25 @@ public class CacheWarmingService {
             return;
         }
         
+        final String lockKey = "warmup:startup";
+        if (!acquireWarmupLock(lockKey, 600000)) { // 10 minutes
+            logger.info("⏭️ Skipping startup warmup (another node holds the lock)");
+            return;
+        }
+        
         logger.info("🚀 Starting initial cache warming on application startup...");
         
         CompletableFuture.runAsync(() -> {
             try {
                 // Give the app a moment to fully initialize
-                Thread.sleep(10000); // 10 seconds
+                try { Thread.sleep(10000); } catch (InterruptedException ignored) {}
                 
                 warmUpCriticalCaches();
                 logger.info("✅ Initial cache warming completed successfully");
             } catch (Exception e) {
                 logger.error("❌ Error during initial cache warming", e);
+            } finally {
+                releaseWarmupLock(lockKey);
             }
         }, warmingExecutor);
     }
@@ -118,6 +151,9 @@ public class CacheWarmingService {
             return;
         }
         
+        final String lockKey = "warmup:services";
+        if (!acquireWarmupLock(lockKey, ttlForRate(servicesWarmingRate))) return;
+        
         logger.info("🔥 Starting all services cache warming cycle...");
         
         CompletableFuture.runAsync(() -> {
@@ -128,6 +164,8 @@ public class CacheWarmingService {
                 logger.info("✅ All services cache warming completed in {}ms", duration);
             } catch (Exception e) {
                 logger.error("❌ Error during services cache warming", e);
+            } finally {
+                releaseWarmupLock(lockKey);
             }
         }, warmingExecutor);
     }
@@ -142,6 +180,9 @@ public class CacheWarmingService {
             return;
         }
         
+        final String lockKey = "warmup:callbacks";
+        if (!acquireWarmupLock(lockKey, ttlForRate(callbacksWarmingRate))) return;
+        
         logger.info("🔥 Starting API callbacks cache warming cycle...");
         
         CompletableFuture.runAsync(() -> {
@@ -152,6 +193,8 @@ public class CacheWarmingService {
                 logger.info("✅ API callbacks cache warming completed in {}ms", duration);
             } catch (Exception e) {
                 logger.error("❌ Error during API callbacks cache warming", e);
+            } finally {
+                releaseWarmupLock(lockKey);
             }
         }, warmingExecutor);
     }
@@ -166,6 +209,9 @@ public class CacheWarmingService {
             return;
         }
         
+        final String lockKey = "warmup:user_api_types";
+        if (!acquireWarmupLock(lockKey, ttlForRate(usersWarmingRate))) return;
+        
         logger.info("🔥 Starting user API types cache warming cycle...");
         
         CompletableFuture.runAsync(() -> {
@@ -176,6 +222,8 @@ public class CacheWarmingService {
                 logger.info("✅ User API types cache warming completed in {}ms", duration);
             } catch (Exception e) {
                 logger.error("❌ Error during user API types cache warming", e);
+            } finally {
+                releaseWarmupLock(lockKey);
             }
         }, warmingExecutor);
     }
@@ -190,6 +238,9 @@ public class CacheWarmingService {
             return;
         }
         
+        final String lockKey = "warmup:numbers_availability";
+        if (!acquireWarmupLock(lockKey, ttlForRate(numbersWarmingRate))) return;
+        
         logger.info("🔥 Starting numbers availability cache warming cycle...");
         
         CompletableFuture.runAsync(() -> {
@@ -200,6 +251,8 @@ public class CacheWarmingService {
                 logger.info("✅ Numbers availability cache warming completed in {}ms", duration);
             } catch (Exception e) {
                 logger.error("❌ Error during numbers availability cache warming", e);
+            } finally {
+                releaseWarmupLock(lockKey);
             }
         }, warmingExecutor);
     }
@@ -214,6 +267,9 @@ public class CacheWarmingService {
             return;
         }
         
+        final String lockKey = "warmup:service_configs";
+        if (!acquireWarmupLock(lockKey, ttlForRate(configsWarmingRate))) return;
+        
         logger.info("🔥 Starting service configurations cache warming cycle...");
         
         CompletableFuture.runAsync(() -> {
@@ -224,6 +280,8 @@ public class CacheWarmingService {
                 logger.info("✅ Service configurations cache warming completed in {}ms", duration);
             } catch (Exception e) {
                 logger.error("❌ Error during service configurations cache warming", e);
+            } finally {
+                releaseWarmupLock(lockKey);
             }
         }, warmingExecutor);
     }
@@ -238,6 +296,9 @@ public class CacheWarmingService {
             return;
         }
         
+        final String lockKey = "warmup:user_balances";
+        if (!acquireWarmupLock(lockKey, ttlForRate(balanceWarmingRate))) return;
+        
         logger.info("🔥 Starting user balances cache warming cycle...");
         
         CompletableFuture.runAsync(() -> {
@@ -248,6 +309,8 @@ public class CacheWarmingService {
                 logger.info("✅ User balances cache warming completed in {}ms", duration);
             } catch (Exception e) {
                 logger.error("❌ Error during user balances cache warming", e);
+            } finally {
+                releaseWarmupLock(lockKey);
             }
         }, warmingExecutor);
     }
@@ -262,6 +325,9 @@ public class CacheWarmingService {
             return;
         }
         
+        final String lockKey = "warmup:operators";
+        if (!acquireWarmupLock(lockKey, ttlForRate(operatorsWarmingRate))) return;
+        
         logger.info("🔥 Starting operators cache warming cycle...");
         
         CompletableFuture.runAsync(() -> {
@@ -272,6 +338,8 @@ public class CacheWarmingService {
                 logger.info("✅ Operators cache warming completed in {}ms", duration);
             } catch (Exception e) {
                 logger.error("❌ Error during operators cache warming", e);
+            } finally {
+                releaseWarmupLock(lockKey);
             }
         }, warmingExecutor);
     }
@@ -296,6 +364,8 @@ public class CacheWarmingService {
     @Scheduled(fixedRateString = "${cache.warming.services.users.numbers.rate:120000}")
     public void warmUpServicesUsersNumbersEvery2m() {
         if (!cacheWarmingEnabled) return;
+        final String lockKey = "warmup:services_users_numbers";
+        if (!acquireWarmupLock(lockKey, 120000)) return;
         logger.info("🔥 Scheduled(2m): warming servicos, chip_model, chip_model_online, usuario");
         CompletableFuture.runAsync(() -> {
             try {
@@ -304,6 +374,8 @@ public class CacheWarmingService {
                 warmUpUserBalances(); // prime usuario-based balance entries
             } catch (Exception e) {
                 logger.error("❌ Error in 2m warmup batch", e);
+            } finally {
+                releaseWarmupLock(lockKey);
             }
         }, warmingExecutor);
     }
@@ -314,6 +386,8 @@ public class CacheWarmingService {
     @Scheduled(fixedRateString = "${cache.warming.chip_number_control.rate:180000}")
     public void warmUpChipNumberControlEvery3m() {
         if (!cacheWarmingEnabled) return;
+        final String lockKey = "warmup:chip_number_control";
+        if (!acquireWarmupLock(lockKey, 180000)) return;
         logger.info("🔥 Scheduled(3m): warming chip_number_control-derived counters");
         CompletableFuture.runAsync(() -> {
             try {
@@ -332,6 +406,8 @@ public class CacheWarmingService {
                 }
             } catch (Exception e) {
                 logger.error("❌ Error warming chip_number_control counters", e);
+            } finally {
+                releaseWarmupLock(lockKey);
             }
         }, warmingExecutor);
     }
@@ -342,6 +418,8 @@ public class CacheWarmingService {
     @Scheduled(fixedRateString = "${cache.warming.chip_number_control_alias.rate:900000}")
     public void warmUpChipNumberControlAliasEvery15m() {
         if (!cacheWarmingEnabled) return;
+        final String lockKey = "warmup:chip_number_control_alias";
+        if (!acquireWarmupLock(lockKey, 900000)) return;
         logger.info("🔥 Scheduled(15m): warming chip_number_control_alias_service");
         CompletableFuture.runAsync(() -> {
             try {
@@ -349,6 +427,8 @@ public class CacheWarmingService {
                 warmUpNumbersAvailabilityCache();
             } catch (Exception e) {
                 logger.error("❌ Error warming chip_number_control_alias_service", e);
+            } finally {
+                releaseWarmupLock(lockKey);
             }
         }, warmingExecutor);
     }
@@ -359,6 +439,8 @@ public class CacheWarmingService {
     @Scheduled(fixedRateString = "${cache.warming.api_key_index.rate:300000}")
     public void warmUpApiKeyIndexEvery5m() {
         if (!cacheWarmingEnabled) return;
+        final String lockKey = "warmup:api_key_index";
+        if (!acquireWarmupLock(lockKey, 300000)) return;
         logger.info("🔥 Scheduled(5m): warming api_key index cache area");
         CompletableFuture.runAsync(() -> {
             try {
@@ -378,6 +460,8 @@ public class CacheWarmingService {
                 logger.debug("✅ api_key index warmed for {} users", warmed);
             } catch (Exception e) {
                 logger.error("❌ Error during api_key index warmup", e);
+            } finally {
+                releaseWarmupLock(lockKey);
             }
         }, warmingExecutor);
     }
@@ -660,6 +744,8 @@ public class CacheWarmingService {
         if (!cacheWarmingEnabled) {
             return;
         }
+        final String lockKey = "warmup:redis_pools";
+        if (!acquireWarmupLock(lockKey, 300000)) return;
 
         logger.info("🔥 Starting Redis pools warming cycle...");
 
@@ -671,6 +757,8 @@ public class CacheWarmingService {
                 logger.info("✅ Redis pools warming completed in {}ms", duration);
             } catch (Exception e) {
                 logger.error("❌ Error during Redis pools warming", e);
+            } finally {
+                releaseWarmupLock(lockKey);
             }
         }, warmingExecutor);
     }
@@ -699,7 +787,7 @@ public class CacheWarmingService {
 
                     // Extract operator from chip (you may need to adjust this based on your data model)
                     String operator = extractOperator(chip);
-                    String country = "0"; // Default country - adjust based on your model
+                    String country = chip.getCountry() != null && !chip.getCountry().isEmpty() ? chip.getCountry() : "0";
 
                     // Populate pools for major services
                     List<String> majorServices = Arrays.asList(
@@ -711,7 +799,7 @@ public class CacheWarmingService {
                         poolGroups.computeIfAbsent(poolKey, k -> new HashSet<>()).add(chip.getNumber());
                     }
 
-                    // Also add to "any" operator pools
+                    // Also add to "any" operator pools (country-specific)
                     for (String service : majorServices) {
                         String poolKey = String.format("any:%s:%s", service, country);
                         poolGroups.computeIfAbsent(poolKey, k -> new HashSet<>()).add(chip.getNumber());

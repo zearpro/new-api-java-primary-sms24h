@@ -7,12 +7,16 @@ import amqp from 'amqplib'
 const app = new Hono()
 
 // Redis connection
+const useTls = (process.env.REDIS_SSL || 'false').toLowerCase() === 'true'
 const redis = new Redis({
 	host: process.env.REDIS_HOST || 'localhost',
 	port: parseInt(process.env.REDIS_PORT || '6379'),
-	password: process.env.REDIS_PASSWORD || 'store24h_redis_pass',
+	password: process.env.REDIS_PASSWORD || undefined,
 	retryDelayOnFailover: 100,
 	maxRetriesPerRequest: 3,
+	lazyConnect: false,
+	// TLS options for Valkey/ElastiCache with TLS
+	...(useTls ? { tls: {} } : {}),
 })
 
 // RabbitMQ connection
@@ -273,7 +277,7 @@ app.get('/api/v2/getExtraActivation', async (c) => {
 		}
 
 		// Validate user
-		const userKey = `user:${api_key}`
+		const userKey = `user:${apiKey}`
 		const userExists = await redis.exists(userKey)
 		if (!userExists) {
 			return c.json({ error: 'Invalid API key' }, 401)

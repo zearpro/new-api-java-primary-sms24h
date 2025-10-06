@@ -128,31 +128,25 @@ public class SmsApi {
             List<List<String>> activationList;
             long startTime = System.nanoTime();
             
-            // ✅ Dynamic country+operator validation using v_operadoras
-            if (country.isPresent() && operator.isPresent()) {
-                if (!countryOperatoraCacheService.isValidCombination(country.get(), operator.get())) {
-                    return ResponseEntity.badRequest().body((Object)"BAD_SERVICE");
+            // ✅ Dynamic country+operator validation using chip_model (strict)
+            if (country.isPresent()) {
+                if (operator.isPresent() && !operator.get().equalsIgnoreCase("any")) {
+                    if (!countryOperatoraCacheService.isValidCombination(country.get(), operator.get())) {
+                        return ResponseEntity.badRequest().body((Object)"BAD_SERVICE");
+                    }
+                } else {
+                    // operator=any: validate that country has ANY numbers available
+                    if (!countryOperatoraCacheService.isValidCountry(country.get())) {
+                        return ResponseEntity.badRequest().body((Object)"BAD_SERVICE");
+                    }
                 }
             }
             
-            // ✅ Service validation - check if service alias exists and is active
+            // ✅ Service validation - must exist and be active
             if (service.isPresent()) {
                 Optional<br.com.store24h.store24h.model.Servico> servicoCheck = servicosRepository.findFirstByAlias(service.get());
                 if (!servicoCheck.isPresent() || !servicoCheck.get().isActivity()) {
-                    // If velocity fast-path is enabled, allow service to proceed (Redis-first path will validate availability)
-                    if (System.getenv("VELOCITY_ENABLED") != null) {
-                        // proceed without DB validation
-                    } else {
-                    // Fallback: accept if Redis pools exist for this service
-                    try {
-                        java.util.Set<String> keys = redisTemplate.keys("pool_count:" + service.get() + ":*");
-                        if (keys == null || keys.isEmpty()) {
-                            return ResponseEntity.badRequest().body((Object)"BAD_SERVICE");
-                        }
-                    } catch (Exception e) {
-                        return ResponseEntity.badRequest().body((Object)"BAD_SERVICE");
-                    }
-                    }
+                    return ResponseEntity.badRequest().body((Object)"BAD_SERVICE");
                 }
             }
             
