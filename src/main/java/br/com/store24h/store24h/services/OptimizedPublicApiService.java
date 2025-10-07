@@ -65,6 +65,18 @@ public class OptimizedPublicApiService {
                 // Use cached service lookup
                 Servico cachedService = cacheService.getServiceCache(service.get());
                 if (cachedService != null) {
+                    // Enforce by_operator for specific operator
+                    if (operator.isPresent() && !operator.get().equalsIgnoreCase("any")) {
+                        String byOp = cachedService.getByOperator();
+                        if (byOp != null && !byOp.isEmpty()) {
+                            try {
+                                org.json.JSONObject obj = new org.json.JSONObject(byOp);
+                                if (!obj.has(operator.get().toLowerCase())) {
+                                    return new HashMap<String, Object>();
+                                }
+                            } catch (Exception ignored) { }
+                        }
+                    }
                     Map<String, Object> serviceMyJson = new HashMap<>();
                     Map<String, Object> priceMyJson = new HashMap<>();
                     priceMyJson.put("cost", cachedService.getPrice());
@@ -93,6 +105,17 @@ public class OptimizedPublicApiService {
                 Optional<Servico> servicoOptional = servicosRepository.findFirstByAlias(service.get());
                 if (servicoOptional.isPresent()) {
                     Servico s = servicoOptional.get();
+                    if (operator.isPresent() && !operator.get().equalsIgnoreCase("any")) {
+                        String byOp = s.getByOperator();
+                        if (byOp != null && !byOp.isEmpty()) {
+                            try {
+                                org.json.JSONObject obj = new org.json.JSONObject(byOp);
+                                if (!obj.has(operator.get().toLowerCase())) {
+                                    return new HashMap<String, Object>();
+                                }
+                            } catch (Exception ignored) { }
+                        }
+                    }
                     Map<String, Object> serviceMyJson = new HashMap<>();
                     Map<String, Object> priceMyJson = new HashMap<>();
                     priceMyJson.put("cost", s.getPrice());
@@ -126,9 +149,30 @@ public class OptimizedPublicApiService {
             Map<String, Object> serviceMyJson = new HashMap<>();
             
             for (Servico s : servicoList) {
+                // Filter by by_operator for specific operator requests
+                if (operator.isPresent() && !operator.get().equalsIgnoreCase("any")) {
+                    String byOp = s.getByOperator();
+                    if (byOp != null && !byOp.isEmpty()) {
+                        try {
+                            org.json.JSONObject obj = new org.json.JSONObject(byOp);
+                            if (!obj.has(operator.get().toLowerCase())) {
+                                continue;
+                            }
+                        } catch (Exception ignored) { }
+                    }
+                }
                 Map<String, Object> priceMyJson = new HashMap<>();
                 priceMyJson.put("cost", s.getPrice());
-                priceMyJson.put("count", s.getTotalQuantity());
+                if (operator.isPresent() && country.isPresent()) {
+                    try {
+                        long poolCount = redisSetService.getAvailableCount(operator.get(), s.getAlias(), country.get());
+                        priceMyJson.put("count", poolCount);
+                    } catch (Exception ex) {
+                        priceMyJson.put("count", s.getTotalQuantity());
+                    }
+                } else {
+                    priceMyJson.put("count", s.getTotalQuantity());
+                }
                 serviceMyJson.put(s.getAlias(), priceMyJson);
             }
             myJson.put(country.get(), serviceMyJson);

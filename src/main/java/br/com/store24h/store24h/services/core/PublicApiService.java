@@ -559,6 +559,18 @@ public class PublicApiService {
                 
                 if (servicoOptional.isPresent()) {
                     Servico s = servicoOptional.get();
+                    // Enforce by_operator if operator is specified
+                    if (operator.isPresent() && !operator.get().equalsIgnoreCase("any")) {
+                        String byOp = s.getByOperator();
+                        if (byOp != null && !byOp.isEmpty()) {
+                            try {
+                                org.json.JSONObject obj = new org.json.JSONObject(byOp);
+                                if (!obj.has(operator.get().toLowerCase())) {
+                                    return myJson; // empty
+                                }
+                            } catch (Exception ignored) { }
+                        }
+                    }
                     Map<String, Object> priceMyJson = new HashMap<>();
                     
                     // ✅ Keep same price from servicos table
@@ -568,7 +580,16 @@ public class PublicApiService {
                     if (operator.isPresent() && country.isPresent()) {
                         try {
                             long poolCount = redisSetService.getAvailableCount(operator.get(), s.getAlias(), country.get());
-                            priceMyJson.put("count", poolCount);
+                            if (poolCount <= 0) {
+                                try {
+                                    long dbCount = this.chipRepository.countByCountryAndOperatorAndService(country.get(), operator.get().toLowerCase(), s.getAlias());
+                                    priceMyJson.put("count", dbCount);
+                                } catch (Exception ex2) {
+                                    priceMyJson.put("count", s.getTotalQuantity());
+                                }
+                            } else {
+                                priceMyJson.put("count", poolCount);
+                            }
                         } catch (Exception ex) {
                             priceMyJson.put("count", s.getTotalQuantity());
                         }
@@ -591,9 +612,38 @@ public class PublicApiService {
             Map<String, Object> serviceMyJson = new HashMap<>();
             
             for (Servico s : servicoList) {
+                if (operator.isPresent() && !operator.get().equalsIgnoreCase("any")) {
+                    String byOp = s.getByOperator();
+                    if (byOp != null && !byOp.isEmpty()) {
+                        try {
+                            org.json.JSONObject obj = new org.json.JSONObject(byOp);
+                            if (!obj.has(operator.get().toLowerCase())) {
+                                continue;
+                            }
+                        } catch (Exception ignored) { }
+                    }
+                }
                 Map<String, Object> priceMyJson = new HashMap<>();
                 priceMyJson.put("cost", s.getPrice());
-                priceMyJson.put("count", s.getTotalQuantity());
+                if (operator.isPresent() && country.isPresent()) {
+                    try {
+                        long poolCount = redisSetService.getAvailableCount(operator.get(), s.getAlias(), country.get());
+                        if (poolCount <= 0) {
+                            try {
+                                long dbCount = this.chipRepository.countByCountryAndOperatorAndService(country.get(), operator.get().toLowerCase(), s.getAlias());
+                                priceMyJson.put("count", dbCount);
+                            } catch (Exception ex2) {
+                                priceMyJson.put("count", s.getTotalQuantity());
+                            }
+                        } else {
+                            priceMyJson.put("count", poolCount);
+                        }
+                    } catch (Exception ex) {
+                        priceMyJson.put("count", s.getTotalQuantity());
+                    }
+                } else {
+                    priceMyJson.put("count", s.getTotalQuantity());
+                }
                 serviceMyJson.put(s.getAlias(), priceMyJson);
             }
             myJson.put(country.get(), serviceMyJson);

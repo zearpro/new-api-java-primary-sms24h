@@ -99,4 +99,8 @@ extends JpaRepository<ChipModel, Long> {
 
     @Query(value="SELECT c.* FROM chip_model c WHERE c.country = :country AND c.alugado = :alugado AND c.ativo = :ativo AND c.operadora = :operator AND c.vendawhatsapp IN :whatsappAtivo ORDER BY RAND() LIMIT 1000", nativeQuery=true)
     public List<ChipModel> findByCountryAndAlugadoAndAtivoAndOperadoraAndVendawhatsappIn(@Param("country") String country, @Param("alugado") Boolean alugado, @Param("ativo") Boolean ativo, @Param("operator") String operator, @Param("whatsappAtivo") List<String> whatsappAtivo);
+
+    // ✅ Fast COUNT fallbacks for accurate per-country+operator+service availability when Redis is cold
+    @Query(value="SELECT COUNT(*) FROM chip_model c WHERE c.country = :country AND c.alugado = false AND c.ativo = true AND c.operadora = :operator AND c.number NOT IN (SELECT cm.number FROM chip_number_control nc INNER JOIN chip_number_control_alias_service al ON al.chip_number_control_id = nc.id INNER JOIN chip_model cm ON cm.number = nc.chip_number WHERE al.alias_service = :service AND cm.ativo = 1)", nativeQuery=true)
+    public long countByCountryAndOperatorAndService(@Param("country") String country, @Param("operator") String operator, @Param("service") String service);
 }
