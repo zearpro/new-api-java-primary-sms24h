@@ -43,12 +43,27 @@ public class RedisConfig {
 		String redisUsername = System.getenv("REDIS_USERNAME");
 		String redisSsl = System.getenv("REDIS_SSL");
 
+		// Debug logging
+		System.out.println("🔧 RedisConfig - Environment Variables:");
+		System.out.println("  REDIS_HOST: " + redisHost);
+		System.out.println("  REDIS_PORT: " + redisPort);
+		System.out.println("  REDIS_USERNAME: " + redisUsername);
+		System.out.println("  REDIS_PASSWORD: " + (redisPassword != null ? "***" : "null"));
+		System.out.println("  REDIS_SSL: " + redisSsl);
+
 		if (redisHost == null) redisHost = "dragonfly";
 		if (redisPort == null) redisPort = "6379";
 		if (redisPassword == null) redisPassword = "";
 
 		int port = Integer.parseInt(redisPort);
 		boolean useSsl = redisSsl != null ? Boolean.parseBoolean(redisSsl) : false;
+
+		System.out.println("🔧 RedisConfig - Final Configuration:");
+		System.out.println("  Host: " + redisHost);
+		System.out.println("  Port: " + port);
+		System.out.println("  Username: " + redisUsername);
+		System.out.println("  Password: " + (redisPassword.isEmpty() ? "empty" : "***"));
+		System.out.println("  SSL: " + useSsl);
 
 		RedisStandaloneConfiguration standalone = new RedisStandaloneConfiguration(redisHost, port);
 		if (redisUsername != null && !redisUsername.isEmpty()) {
