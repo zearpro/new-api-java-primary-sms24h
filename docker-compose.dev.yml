@@ -116,6 +116,12 @@ services:
       KEY_CONVERTER_SCHEMAS_ENABLE: false
       VALUE_CONVERTER_SCHEMAS_ENABLE: false
       CONNECT_LOG4J_LOGGERS: "org.apache.kafka.connect.runtime.rest=WARN,org.reflections=ERROR"
+      # MySQL Database Configuration for CDC
+      MYSQL_HOST: ${MYSQL_HOST}
+      MYSQL_PORT: ${MYSQL_PORT:-3306}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
     ports:
       - "8083:8083"
     depends_on:

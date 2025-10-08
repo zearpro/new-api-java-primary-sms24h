@@ -2,10 +2,10 @@
   "name": "mysql-cache-sync-connector",
   "config": {
     "connector.class": "io.debezium.connector.mysql.MySqlConnector",
-    "database.hostname": "host.docker.internal",
+    "database.hostname": "${MYSQL_HOST}",
     "database.port": "3306",
-    "database.user": "root",
-    "database.password": "root123",
+    "database.user": "${MYSQL_USER}",
+    "database.password": "${MYSQL_PASSWORD}",
     "database.server.id": "184054",
     "database.server.name": "coredb",
     "topic.prefix": "coredb",
