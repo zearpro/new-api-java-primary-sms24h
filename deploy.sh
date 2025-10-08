@@ -84,3 +84,14 @@ $COMPOSE -f docker-compose.prod.yml ps
 
 echo "🌐 API:  http://localhost:${PORT}"
 echo "🧪 Health: http://localhost:${PORT}/actuator/health"
+
+# Show Java application logs
+echo ""
+echo "📋 Java Application Logs (Last 50 lines):"
+echo "=========================================="
+$COMPOSE -f docker-compose.prod.yml logs --tail=50 store24h-api
+
+echo ""
+echo "🎉 Deployment Complete!"
+echo "💡 To see live logs: $COMPOSE -f docker-compose.prod.yml logs -f store24h-api"
+echo "💡 To see all logs: $COMPOSE -f docker-compose.prod.yml logs --tail=200 store24h-api"
