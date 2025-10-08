@@ -8,9 +8,15 @@ set -e
 # Load environment variables from .env if it exists
 if [ -f ".env" ]; then
     echo "📋 Loading environment variables from .env..."
-    set -a  # automatically export all variables
-    source .env
-    set +a  # stop automatically exporting
+    # Use a safer method to load .env file
+    while IFS= read -r line; do
+        # Skip comments and empty lines
+        if [[ $line =~ ^[[:space:]]*# ]] || [[ -z "${line// }" ]]; then
+            continue
+        fi
+        # Export the variable
+        export "$line"
+    done < .env
 fi
 
 # Check if required environment variables are set

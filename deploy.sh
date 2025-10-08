@@ -51,9 +51,15 @@ fi
 
 # Load environment variables from .env
 print_status "Loading environment variables from .env..."
-set -a  # automatically export all variables
-source .env
-set +a  # stop automatically exporting
+# Use a safer method to load .env file
+while IFS= read -r line; do
+    # Skip comments and empty lines
+    if [[ $line =~ ^[[:space:]]*# ]] || [[ -z "${line// }" ]]; then
+        continue
+    fi
+    # Export the variable
+    export "$line"
+done < .env
 
 # Check if debezium-config directory exists
 if [ ! -d "debezium-config" ]; then
