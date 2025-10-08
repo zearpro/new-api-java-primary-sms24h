@@ -74,7 +74,8 @@ public class OptimizedPublicApiService {
                         if (byOp != null && !byOp.isEmpty()) {
                             try {
                                 org.json.JSONObject obj = new org.json.JSONObject(byOp);
-                                if (!obj.has(operator.get().toLowerCase())) {
+                                // ✅ FIX: Database stores operators in UPPERCASE, URL passes lowercase
+                                if (!obj.has(operator.get().toUpperCase())) {
                                     return new HashMap<String, Object>();
                                 }
                             } catch (Exception ignored) { }
@@ -114,7 +115,8 @@ public class OptimizedPublicApiService {
                         if (byOp != null && !byOp.isEmpty()) {
                             try {
                                 org.json.JSONObject obj = new org.json.JSONObject(byOp);
-                                operatorSupported = obj.has(operator.get().toLowerCase());
+                                // ✅ FIX: Database stores operators in UPPERCASE, URL passes lowercase
+                                operatorSupported = obj.has(operator.get().toUpperCase());
                             } catch (Exception ignored) { }
                         }
                     }
@@ -168,7 +170,8 @@ public class OptimizedPublicApiService {
                     if (byOp != null && !byOp.isEmpty()) {
                         try {
                             org.json.JSONObject obj = new org.json.JSONObject(byOp);
-                            operatorSupported = obj.has(operator.get().toLowerCase());
+                            // ✅ FIX: Database stores operators in UPPERCASE, URL passes lowercase
+                            operatorSupported = obj.has(operator.get().toUpperCase());
                         } catch (Exception ignored) { }
                     }
                 }

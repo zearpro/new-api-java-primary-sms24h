@@ -379,7 +379,8 @@ public class PublicApiService {
                         if (byOp != null && !byOp.isEmpty()) {
                             try {
                                 org.json.JSONObject obj = new org.json.JSONObject(byOp);
-                                if (!obj.has(operator.get().toLowerCase())) {
+                                // ✅ FIX: Database stores operators in UPPERCASE, URL passes lowercase
+                                if (!obj.has(operator.get().toUpperCase())) {
                                     return myJson; // empty
                                 }
                             } catch (Exception ignored) { }
@@ -429,7 +430,8 @@ public class PublicApiService {
                     if (byOp != null && !byOp.isEmpty()) {
                         try {
                             org.json.JSONObject obj = new org.json.JSONObject(byOp);
-                            if (!obj.has(operator.get().toLowerCase())) {
+                            // ✅ FIX: Database stores operators in UPPERCASE, URL passes lowercase
+                            if (!obj.has(operator.get().toUpperCase())) {
                                 continue;
                             }
                         } catch (Exception ignored) { }
