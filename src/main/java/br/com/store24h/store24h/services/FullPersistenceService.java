@@ -17,6 +17,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * FullPersistenceService - Ensures 100% Redis persistence with MySQL sync
@@ -49,11 +50,11 @@ public class FullPersistenceService {
     @Autowired
     private ServicosRepository servicosRepository;
 
-    @Autowired
-    private OperatorsCacheService operatorsCacheService;
+    // @Autowired
+    // private OperatorsCacheService operatorsCacheService;
 
-    @Autowired
-    private PersistentTablesSyncService persistentTablesSyncService;
+    // @Autowired
+    // private PersistentTablesSyncService persistentTablesSyncService;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -62,8 +63,10 @@ public class FullPersistenceService {
     private static final String CHIP_MODEL_KEY = "chip_model:full";
     private static final String CHIP_MODEL_ONLINE_KEY = "chip_model_online:full";
     private static final String SERVICOS_KEY = "servicos:full";
-    private static final String OPERADORAS_KEY = "v_operadoras:full";
+    // private static final String OPERADORAS_KEY = "v_operadoras:full";
     private static final long CACHE_TTL_HOURS = 24;
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     // Last sync markers
     private volatile LocalDateTime lastChipModelSync = LocalDateTime.MIN;
@@ -116,7 +119,7 @@ public class FullPersistenceService {
                 .getResultList();
             
             if (!results.isEmpty()) {
-                Map<String, Object> newData = new HashMap<>();
+                Map<String, String> newData = new HashMap<>();
                 long newMaxId = lastChipModelMaxId;
                 for (Object[] row : results) {
                     String key = "chip_model:" + row[0]; // id
@@ -131,13 +134,18 @@ public class FullPersistenceService {
                     data.put("checked", row[7]);
                     data.put("status", row[8]);
                     data.put("vendawhatsapp", row[9]);
-                    newData.put(key, data);
+                    try {
+                        newData.put(key, OBJECT_MAPPER.writeValueAsString(data));
+                    } catch (Exception jsonEx) {
+                        // Fallback: store minimal JSON
+                        newData.put(key, "{}");
+                    }
                     long id = ((Number) row[0]).longValue();
                     if (id > newMaxId) newMaxId = id;
                 }
                 
-                // Update Redis (per-key set to ensure correct serialization)
-                for (Map.Entry<String, Object> entry : newData.entrySet()) {
+                // Update Redis (per-key set as JSON string)
+                for (Map.Entry<String, String> entry : newData.entrySet()) {
                     redisTemplate.opsForValue().set(entry.getKey(), entry.getValue());
                 }
                 redisTemplate.expire(CHIP_MODEL_KEY, CACHE_TTL_HOURS, TimeUnit.HOURS);
@@ -170,6 +178,7 @@ public class FullPersistenceService {
             
             // Get all MySQL IDs
             String sql = "SELECT id FROM chip_model";
+            @SuppressWarnings("unchecked")
             List<Object> mysqlIds = entityManager.createNativeQuery(sql).getResultList();
             Set<String> mysqlIdSet = new HashSet<>();
             for (Object id : mysqlIds) {
@@ -198,7 +207,7 @@ public class FullPersistenceService {
             logger.info("🔥 Warming up chip_model table...");
             
             List<ChipModel> allChipModels = chipRepository.findAll();
-            Map<String, Object> cacheData = new HashMap<>();
+            Map<String, String> cacheData = new HashMap<>();
             
             for (ChipModel chip : allChipModels) {
                 String key = "chip_model:" + chip.getId();
@@ -213,11 +222,15 @@ public class FullPersistenceService {
                 data.put("checked", chip.getChecked());
                 data.put("status", chip.getStatus());
                 data.put("vendawhatsapp", chip.getVendawhatsapp());
-                cacheData.put(key, data);
+                try {
+                    cacheData.put(key, OBJECT_MAPPER.writeValueAsString(data));
+                } catch (Exception jsonEx) {
+                    cacheData.put(key, "{}");
+                }
             }
             
-            // Batch set to Redis (per-key to avoid converter issues)
-            for (Map.Entry<String, Object> entry : cacheData.entrySet()) {
+            // Batch set to Redis (per-key JSON strings)
+            for (Map.Entry<String, String> entry : cacheData.entrySet()) {
                 redisTemplate.opsForValue().set(entry.getKey(), entry.getValue());
             }
             redisTemplate.expire(CHIP_MODEL_KEY, CACHE_TTL_HOURS, TimeUnit.HOURS);
@@ -240,10 +253,10 @@ public class FullPersistenceService {
             
             // TODO: Implement when ChipModelOnlineRepository is available
             // List<ChipModelOnline> allOnline = chipModelOnlineRepository.findAll();
-            Map<String, Object> cacheData = new HashMap<>();
+            Map<String, String> cacheData = new HashMap<>();
             
             // Placeholder implementation
-            for (Map.Entry<String, Object> entry : cacheData.entrySet()) {
+            for (Map.Entry<String, String> entry : cacheData.entrySet()) {
                 redisTemplate.opsForValue().set(entry.getKey(), entry.getValue());
             }
             redisTemplate.expire(CHIP_MODEL_ONLINE_KEY, CACHE_TTL_HOURS, TimeUnit.HOURS);
@@ -265,7 +278,7 @@ public class FullPersistenceService {
             logger.info("🔥 Warming up servicos table...");
             
             List<Servico> allServicos = servicosRepository.findAll();
-            Map<String, Object> cacheData = new HashMap<>();
+            Map<String, String> cacheData = new HashMap<>();
             
             for (Servico servico : allServicos) {
                 String key = "servicos:" + servico.getId();
@@ -277,10 +290,14 @@ public class FullPersistenceService {
                 data.put("totalQuantity", servico.getTotalQuantity());
                 data.put("activity", servico.isActivity());
                 // data.put("description", servico.getDescription()); // Method not available
-                cacheData.put(key, data);
+                try {
+                    cacheData.put(key, OBJECT_MAPPER.writeValueAsString(data));
+                } catch (Exception jsonEx) {
+                    cacheData.put(key, "{}");
+                }
             }
             
-            for (Map.Entry<String, Object> entry : cacheData.entrySet()) {
+            for (Map.Entry<String, String> entry : cacheData.entrySet()) {
                 redisTemplate.opsForValue().set(entry.getKey(), entry.getValue());
             }
             redisTemplate.expire(SERVICOS_KEY, CACHE_TTL_HOURS, TimeUnit.HOURS);
