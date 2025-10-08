@@ -105,14 +105,13 @@ public class OptimizedPublicApiService {
                 Optional<Servico> servicoOptional = servicosRepository.findFirstByAlias(service.get());
                 if (servicoOptional.isPresent()) {
                     Servico s = servicoOptional.get();
+                    boolean operatorSupported = true;
                     if (operator.isPresent() && !operator.get().equalsIgnoreCase("any")) {
                         String byOp = s.getByOperator();
                         if (byOp != null && !byOp.isEmpty()) {
                             try {
                                 org.json.JSONObject obj = new org.json.JSONObject(byOp);
-                                if (!obj.has(operator.get().toLowerCase())) {
-                                    return new HashMap<String, Object>();
-                                }
+                                operatorSupported = obj.has(operator.get().toLowerCase());
                             } catch (Exception ignored) { }
                         }
                     }
@@ -123,10 +122,21 @@ public class OptimizedPublicApiService {
                     // ✅ Prefer Redis pool count if operator and country provided; fallback to DB field
                     if (operator.isPresent() && country.isPresent()) {
                         try {
-                            long poolCount = redisSetService.getAvailableCount(operator.get(), s.getAlias(), country.get());
-                            priceMyJson.put("count", poolCount);
+                            long poolCount = operatorSupported ? redisSetService.getAvailableCount(s.getAlias(), country.get(), operator.get()) : 0L;
+                            if (poolCount <= 0) {
+                                // Fallback to precise MySQL count
+                                long dbCount = operator.get().equalsIgnoreCase("any")
+                                    ? chipRepository.countByCountryAndService(country.get(), s.getAlias())
+                                    : chipRepository.countByCountryAndOperatorAndService(country.get(), operator.get().toLowerCase(), s.getAlias());
+                                priceMyJson.put("count", dbCount);
+                            } else {
+                                priceMyJson.put("count", poolCount);
+                            }
                         } catch (Exception ex) {
-                            priceMyJson.put("count", s.getTotalQuantity());
+                            long dbCount = operator.get().equalsIgnoreCase("any")
+                                ? chipRepository.countByCountryAndService(country.get(), s.getAlias())
+                                : chipRepository.countByCountryAndOperatorAndService(country.get(), operator.get().toLowerCase(), s.getAlias());
+                            priceMyJson.put("count", dbCount);
                         }
                     } else {
                         priceMyJson.put("count", s.getTotalQuantity());
@@ -149,15 +159,13 @@ public class OptimizedPublicApiService {
             Map<String, Object> serviceMyJson = new HashMap<>();
             
             for (Servico s : servicoList) {
-                // Filter by by_operator for specific operator requests
+                boolean operatorSupported = true;
                 if (operator.isPresent() && !operator.get().equalsIgnoreCase("any")) {
                     String byOp = s.getByOperator();
                     if (byOp != null && !byOp.isEmpty()) {
                         try {
                             org.json.JSONObject obj = new org.json.JSONObject(byOp);
-                            if (!obj.has(operator.get().toLowerCase())) {
-                                continue;
-                            }
+                            operatorSupported = obj.has(operator.get().toLowerCase());
                         } catch (Exception ignored) { }
                     }
                 }
@@ -165,10 +173,20 @@ public class OptimizedPublicApiService {
                 priceMyJson.put("cost", s.getPrice());
                 if (operator.isPresent() && country.isPresent()) {
                     try {
-                        long poolCount = redisSetService.getAvailableCount(operator.get(), s.getAlias(), country.get());
-                        priceMyJson.put("count", poolCount);
+                        long poolCount = operatorSupported ? redisSetService.getAvailableCount(s.getAlias(), country.get(), operator.get()) : 0L;
+                        if (poolCount <= 0) {
+                            long dbCount = operator.get().equalsIgnoreCase("any")
+                                ? chipRepository.countByCountryAndService(country.get(), s.getAlias())
+                                : chipRepository.countByCountryAndOperatorAndService(country.get(), operator.get().toLowerCase(), s.getAlias());
+                            priceMyJson.put("count", dbCount);
+                        } else {
+                            priceMyJson.put("count", poolCount);
+                        }
                     } catch (Exception ex) {
-                        priceMyJson.put("count", s.getTotalQuantity());
+                        long dbCount = operator.get().equalsIgnoreCase("any")
+                            ? chipRepository.countByCountryAndService(country.get(), s.getAlias())
+                            : chipRepository.countByCountryAndOperatorAndService(country.get(), operator.get().toLowerCase(), s.getAlias());
+                        priceMyJson.put("count", dbCount);
                     }
                 } else {
                     priceMyJson.put("count", s.getTotalQuantity());

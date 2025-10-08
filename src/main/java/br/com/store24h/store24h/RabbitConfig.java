@@ -28,9 +28,24 @@ public class RabbitConfig {
         if (host == null) {
             host = "rabbitmq";
         }
+        String username = System.getenv("RABBITMQ_USER");
+        if (username == null || username.isEmpty()) {
+            // Fallback to Spring-style env in compose
+            username = System.getenv("SPRING_RABBITMQ_USERNAME");
+        }
+        if (username == null || username.isEmpty()) {
+            username = "guest";
+        }
+        String password = System.getenv("RABBITMQ_PASSWORD");
+        if (password == null || password.isEmpty()) {
+            password = System.getenv("SPRING_RABBITMQ_PASSWORD");
+        }
+        if (password == null) {
+            password = "guest";
+        }
         CachingConnectionFactory connectionFactory = new CachingConnectionFactory(host);
-        connectionFactory.setUsername("guesta");
-        connectionFactory.setPassword("guesta");
+        connectionFactory.setUsername(username);
+        connectionFactory.setPassword(password);
         return connectionFactory;
     }
 

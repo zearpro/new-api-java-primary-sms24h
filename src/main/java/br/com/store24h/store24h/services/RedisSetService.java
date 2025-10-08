@@ -96,7 +96,7 @@ public class RedisSetService {
      */
     public void addUsedNumber(String serviceId, String number) {
         try {
-            String key = "used_numbers:" + serviceId;
+            String key = "used_numbers:{" + serviceId + "}";
             setOps.add(key, number);
             logger.debug("Added number {} to used set for service {}", number, serviceId);
         } catch (Exception e) {
@@ -109,7 +109,7 @@ public class RedisSetService {
      */
     public boolean isNumberUsed(String serviceId, String number) {
         try {
-            String key = "used_numbers:" + serviceId;
+            String key = "used_numbers:{" + serviceId + "}";
             Boolean isMember = setOps.isMember(key, number);
             return isMember != null && isMember;
         } catch (Exception e) {
@@ -123,15 +123,15 @@ public class RedisSetService {
      */
     public long getAvailableCount(String serviceId, String country, String operator) {
         try {
-            String key = "pool_count:" + serviceId + ":" + country + ":" + operator;
+            String key = "pool_count:{" + serviceId + "}:" + country + ":" + operator;
             Object count = valueOps.get(key);
             if (count != null) {
                 return Long.parseLong(count.toString());
             }
             
             // Fallback: calculate from set difference
-            String availableKey = "available_numbers:" + serviceId + ":" + country + ":" + operator;
-            String usedKey = "used_numbers:" + serviceId;
+            String availableKey = "available_numbers:{" + serviceId + "}:" + country + ":" + operator;
+            String usedKey = "used_numbers:{" + serviceId + "}";
             
             Long availableSize = setOps.size(availableKey);
             Long usedSize = setOps.size(usedKey);
@@ -154,8 +154,8 @@ public class RedisSetService {
     public ReservationResult reserveNumber(String operator, String service, String country) {
         try {
             operator = normalizeOperator(operator);
-            String availableKey = "available_numbers:" + service + ":" + country + ":" + operator;
-            String usedKey = "used_numbers:" + service;
+            String availableKey = "available_numbers:{" + service + "}:" + country + ":" + operator;
+            String usedKey = "used_numbers:{" + service + "}";
 
             String luaScript =
                 "local available = redis.call('SPOP', KEYS[1]) " +
@@ -167,7 +167,7 @@ public class RedisSetService {
                 "  return nil " +
                 "end";
 
-            String countKey = "pool_count:" + service + ":" + country + ":" + operator;
+            String countKey = "pool_count:{" + service + "}:" + country + ":" + operator;
 
             Object result = redisTemplate.execute(
                 (org.springframework.data.redis.core.RedisCallback<Object>) connection ->
@@ -214,9 +214,9 @@ public class RedisSetService {
     public void populateAvailablePoolSwap(String serviceId, String country, String operator, Set<String> numbers) {
         try {
             operator = normalizeOperator(operator);
-            String oldKey = "available_numbers:" + serviceId + ":" + country + ":" + operator;
-            String newKey = "available_numbers_new:" + serviceId + ":" + country + ":" + operator;
-            String countKey = "pool_count:" + serviceId + ":" + country + ":" + operator;
+            String oldKey = "available_numbers:{" + serviceId + "}:" + country + ":" + operator;
+            String newKey = "available_numbers_new:{" + serviceId + "}:" + country + ":" + operator;
+            String countKey = "pool_count:{" + serviceId + "}:" + country + ":" + operator;
             
             // Add numbers to new key
             if (!numbers.isEmpty()) {
@@ -261,8 +261,8 @@ public class RedisSetService {
     public PoolStats getPoolStats(String serviceId, String country, String operator) {
         try {
             operator = normalizeOperator(operator);
-            String availableKey = "available_numbers:" + serviceId + ":" + country + ":" + operator;
-            String usedKey = "used_numbers:" + serviceId;
+            String availableKey = "available_numbers:{" + serviceId + "}:" + country + ":" + operator;
+            String usedKey = "used_numbers:{" + serviceId + "}";
             
             Long available = setOps.size(availableKey);
             Long used = setOps.size(usedKey);
@@ -286,7 +286,7 @@ public class RedisSetService {
         try {
             operator = normalizeOperator(operator);
             // Mark as confirmed in Redis
-            String confirmedKey = "confirmed:" + serviceId + ":" + number + ":" + country + ":" + operator;
+            String confirmedKey = "confirmed:{" + serviceId + "}:" + number + ":" + country + ":" + operator;
             valueOps.set(confirmedKey, userId, 86400, TimeUnit.SECONDS); // 24 hours TTL
             
             logger.debug("Confirmed reservation for {}:{}:{}:{}", serviceId, number, country, operator);
@@ -304,9 +304,9 @@ public class RedisSetService {
     public boolean rollbackReservation(String serviceId, String number, String country, String operator, String userId) {
         try {
             operator = normalizeOperator(operator);
-            String availableKey = "available_numbers:" + serviceId + ":" + country + ":" + operator;
-            String usedKey = "used_numbers:" + serviceId;
-            String countKey = "pool_count:" + serviceId + ":" + country + ":" + operator;
+            String availableKey = "available_numbers:{" + serviceId + "}:" + country + ":" + operator;
+            String usedKey = "used_numbers:{" + serviceId + "}";
+            String countKey = "pool_count:{" + serviceId + "}:" + country + ":" + operator;
             
             // Remove from used and add back to available
             setOps.remove(usedKey, number);
@@ -331,7 +331,7 @@ public class RedisSetService {
      */
     public void setActivationState(long activationId, String serviceId, String number, String status) {
         try {
-            String activationKey = "activation:" + activationId;
+            String activationKey = "activation:{" + serviceId + "}:" + activationId;
             Map<String, Object> activationData = new HashMap<>();
             activationData.put("service_id", serviceId);
             activationData.put("number", number);
@@ -354,8 +354,8 @@ public class RedisSetService {
     public void addToPool(String serviceId, String country, String operator, Set<String> numbers) {
         try {
             operator = normalizeOperator(operator);
-            String key = "available_numbers:" + serviceId + ":" + country + ":" + operator;
-            String countKey = "pool_count:" + serviceId + ":" + country + ":" + operator;
+            String key = "available_numbers:{" + serviceId + "}:" + country + ":" + operator;
+            String countKey = "pool_count:{" + serviceId + "}:" + country + ":" + operator;
             
             if (!numbers.isEmpty()) {
                 setOps.add(key, numbers.toArray());
@@ -380,8 +380,8 @@ public class RedisSetService {
     public void removeFromPool(String serviceId, String country, String operator, Set<String> numbers) {
         try {
             operator = normalizeOperator(operator);
-            String key = "available_numbers:" + serviceId + ":" + country + ":" + operator;
-            String countKey = "pool_count:" + serviceId + ":" + country + ":" + operator;
+            String key = "available_numbers:{" + serviceId + "}:" + country + ":" + operator;
+            String countKey = "pool_count:{" + serviceId + "}:" + country + ":" + operator;
             
             if (!numbers.isEmpty()) {
                 Long removed = setOps.remove(key, numbers.toArray());
@@ -408,7 +408,7 @@ public class RedisSetService {
     public boolean isActivated(String serviceId, String number, String country, String operator) {
         try {
             operator = normalizeOperator(operator);
-            String key = "activated:" + serviceId + ":" + number + ":" + country + ":" + operator;
+            String key = "activated:{" + serviceId + "}:" + number + ":" + country + ":" + operator;
             Boolean exists = redisTemplate.hasKey(key);
             return exists != null && exists;
         } catch (Exception e) {
@@ -424,7 +424,7 @@ public class RedisSetService {
     public void markActivated(String serviceId, String number, String country, String operator, long ttlSeconds) {
         try {
             operator = normalizeOperator(operator);
-            String key = "activated:" + serviceId + ":" + number + ":" + country + ":" + operator;
+            String key = "activated:{" + serviceId + "}:" + number + ":" + country + ":" + operator;
             valueOps.set(key, "1", ttlSeconds, TimeUnit.SECONDS);
             logger.debug("Marked {}:{}:{}:{} as activated", serviceId, number, country, operator);
         } catch (Exception e) {
@@ -439,7 +439,7 @@ public class RedisSetService {
     public long getPoolSize(String serviceId, String country, String operator) {
         try {
             operator = normalizeOperator(operator);
-            String key = "available_numbers:" + serviceId + ":" + country + ":" + operator;
+            String key = "available_numbers:{" + serviceId + "}:" + country + ":" + operator;
             Long size = setOps.size(key);
             return size != null ? size : 0L;
         } catch (Exception e) {
@@ -454,22 +454,22 @@ public class RedisSetService {
      */
     public void clearServiceData(String serviceId) {
         try {
-            Set<String> keys = redisTemplate.keys("used_numbers:" + serviceId + "*");
+            Set<String> keys = redisTemplate.keys("used_numbers:{" + serviceId + "}*");
             if (keys != null && !keys.isEmpty()) {
                 redisTemplate.delete(keys);
             }
             
-            keys = redisTemplate.keys("available_numbers:" + serviceId + "*");
+            keys = redisTemplate.keys("available_numbers:{" + serviceId + "}*");
             if (keys != null && !keys.isEmpty()) {
                 redisTemplate.delete(keys);
             }
             
-            keys = redisTemplate.keys("pool_count:" + serviceId + "*");
+            keys = redisTemplate.keys("pool_count:{" + serviceId + "}*");
             if (keys != null && !keys.isEmpty()) {
                 redisTemplate.delete(keys);
             }
             
-            keys = redisTemplate.keys("activated:" + serviceId + "*");
+            keys = redisTemplate.keys("activated:{" + serviceId + "}*");
             if (keys != null && !keys.isEmpty()) {
                 redisTemplate.delete(keys);
             }

@@ -198,9 +198,24 @@ public class PublicApiService {
             }
             try {
                 if (operator.isPresent() && !operator.get().equalsIgnoreCase("ANY")) {
+                    // ✅ Enforce exact country+operator selection (no cross-country leakage)
+                    String op = operator.get();
+                    String ctry = country.orElse("");
                     startTimeTrecho = System.nanoTime();
-                    numeroDisponivelList = servicoOptional.get().getAlias().equals("wa") ? (tentativaNum == 0 ? this.chipRepository.findByAlugadoAndAtivoAndOperadoraAndVendawhatsappIn(false, true, operator.get(), valoresVendawhatsapp, limite) : this.chipRepository.findByAlugadoAndAtivoAndOperadoraAndVendawhatsappInAndService(false, true, operator.get(), valoresVendawhatsapp, servicoOptional.get().getAlias(), limite)) : (tentativaNum == 0 ? this.chipRepository.findByAlugadoAndAtivoAndOperadora((Boolean)false, (Boolean)true, operator.get(), limite) : this.chipRepository.findByAlugadoAndAtivoAndOperadoraAndService(false, true, operator.get(), servicoOptional.get().getAlias(), limite));
-                    Utils.calcTime(startTimeOperacao, startTimeTrecho, "Buscar numeros ativos com FILTRO DE OPERADORA");
+                    if (servicoOptional.get().getAlias().equals("wa")) {
+                        if (tentativaNum == 0) {
+                            numeroDisponivelList = this.chipRepository.findByCountryAndAlugadoAndAtivoAndOperadoraAndVendawhatsappIn(ctry, false, true, op, valoresVendawhatsapp);
+                        } else {
+                            numeroDisponivelList = this.chipRepository.findByCountryAndAlugadoAndAtivoAndOperadoraAndService(ctry, false, true, op, servicoOptional.get().getAlias());
+                        }
+                    } else {
+                        if (tentativaNum == 0) {
+                            numeroDisponivelList = this.chipRepository.findByCountryAndAlugadoAndAtivoAndOperadora(ctry, false, true, op);
+                        } else {
+                            numeroDisponivelList = this.chipRepository.findByCountryAndAlugadoAndAtivoAndOperadoraAndService(ctry, false, true, op, servicoOptional.get().getAlias());
+                        }
+                    }
+                    Utils.calcTime(startTimeOperacao, startTimeTrecho, "Buscar numeros ativos com FILTRO DE OPERADORA e COUNTRY");
                 } else {
                     // ✅ OPTIMIZATION: For operator=any, try cache first, then MySQL fallback
                     startTimeTrecho = System.nanoTime();
@@ -275,6 +290,13 @@ public class PublicApiService {
                     try {
                         Optional<ChipNumberControl> chipNumberControlOptional = this.chipNumberControlRepository.findByChipNumberAndAliasService(cm.getNumber(), service.get());
                         if (chipNumberControlOptional.isPresent() && !isGetExtra || this.otherService.isIn(cm.getNumber()) && !isGetExtra) continue;
+                        // ✅ Final guard: enforce exact country match and operator when provided
+                        if (country.isPresent() && !country.get().equals(cm.getCountry())) {
+                            continue;
+                        }
+                        if (operator.isPresent() && !operator.get().equalsIgnoreCase("ANY") && !operator.get().equalsIgnoreCase(cm.getOperadora())) {
+                            continue;
+                        }
                         try {
                             chipModel = cm;
                             System.out.println(cm.getNumber() + " : " + servicoOptional.get().getAlias());
@@ -579,14 +601,12 @@ public class PublicApiService {
                     // ✅ Prefer Redis pool count if operator and country provided; fallback to DB field
                     if (operator.isPresent() && country.isPresent()) {
                         try {
-                            long poolCount = redisSetService.getAvailableCount(operator.get(), s.getAlias(), country.get());
+                            long poolCount = redisSetService.getAvailableCount(s.getAlias(), country.get(), operator.get());
                             if (poolCount <= 0) {
-                                try {
-                                    long dbCount = this.chipRepository.countByCountryAndOperatorAndService(country.get(), operator.get().toLowerCase(), s.getAlias());
-                                    priceMyJson.put("count", dbCount);
-                                } catch (Exception ex2) {
-                                    priceMyJson.put("count", s.getTotalQuantity());
-                                }
+                                long dbCount = operator.get().equalsIgnoreCase("any")
+                                    ? this.chipRepository.countByCountryAndService(country.get(), s.getAlias())
+                                    : this.chipRepository.countByCountryAndOperatorAndService(country.get(), operator.get().toLowerCase(), s.getAlias());
+                                priceMyJson.put("count", dbCount);
                             } else {
                                 priceMyJson.put("count", poolCount);
                             }
@@ -627,14 +647,12 @@ public class PublicApiService {
                 priceMyJson.put("cost", s.getPrice());
                 if (operator.isPresent() && country.isPresent()) {
                     try {
-                        long poolCount = redisSetService.getAvailableCount(operator.get(), s.getAlias(), country.get());
+                        long poolCount = redisSetService.getAvailableCount(s.getAlias(), country.get(), operator.get());
                         if (poolCount <= 0) {
-                            try {
-                                long dbCount = this.chipRepository.countByCountryAndOperatorAndService(country.get(), operator.get().toLowerCase(), s.getAlias());
-                                priceMyJson.put("count", dbCount);
-                            } catch (Exception ex2) {
-                                priceMyJson.put("count", s.getTotalQuantity());
-                            }
+                            long dbCount = operator.get().equalsIgnoreCase("any")
+                                ? this.chipRepository.countByCountryAndService(country.get(), s.getAlias())
+                                : this.chipRepository.countByCountryAndOperatorAndService(country.get(), operator.get().toLowerCase(), s.getAlias());
+                            priceMyJson.put("count", dbCount);
                         } else {
                             priceMyJson.put("count", poolCount);
                         }

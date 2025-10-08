@@ -1,18 +1,15 @@
 version: '3.8'
 
 services:
-  # Dragonfly Service - High Performance Redis Alternative
-  dragonfly:
-    image: docker.dragonflydb.io/dragonflydb/dragonfly:latest
-    container_name: store24h-dragonfly
+  # Local Redis for development (persistent via AOF)
+  redis:
+    image: redis:7-alpine
+    container_name: store24h-redis
     ports:
       - "6379:6379"
-    command: >
-      --maxmemory=2gb
-      --logtostderr
-      --v=1
+    command: ["redis-server", "--appendonly", "yes"]
     volumes:
-      - dragonfly_data:/data
+      - redis_data:/data
     networks:
       - app-network
     restart: unless-stopped
@@ -53,9 +50,9 @@ services:
       - "3000:3000"
     environment:
       - REACT_APP_API_URL=http://store24h-api:80
-      - REACT_APP_DRAGONFLY_URL=dragonfly://dragonfly:6379
+      - REACT_APP_DRAGONFLY_URL=redis://redis:6379
       - REACT_APP_DASHBOARD_TITLE=Store24h Warmup Dashboard
-      - REACT_APP_DASHBOARD_SUBTITLE=Dragonfly Performance Monitor
+      - REACT_APP_DASHBOARD_SUBTITLE=Redis Performance Monitor
     depends_on:
       store24h-api:
         condition: service_started
@@ -77,10 +74,11 @@ services:
       - "3001:3000"
     environment:
       - PORT=3000
-      - DRAGONFLY_HOST=dragonfly
-      - DRAGONFLY_PORT=6379
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_SSL=false
     depends_on:
-      dragonfly:
+      redis:
         condition: service_healthy
     restart: unless-stopped
     networks:
@@ -109,25 +107,20 @@ services:
       # MongoDB Configuration
       - MONGO_URL=${MONGO_URL}
       
-      # Dragonfly Container settings (High Performance Redis Alternative)
-      - DRAGONFLY_HOST=dragonfly
-      - DRAGONFLY_PORT=6379
-      - DRAGONFLY_PASSWORD=
+      # Local Redis for dev profile
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_SSL=false
       
-      # Cache warming configuration - Aggressive intervals for t3.2xlarge
-      - CACHE_WARMING_ENABLED=${CACHE_WARMING_ENABLED:-true}
-      - CACHE_WARMING_CHIP_MODEL_ONLINE_RATE=${CACHE_WARMING_CHIP_MODEL_ONLINE_RATE:-30000}
-      - CACHE_WARMING_CHIP_MODEL_RATE=${CACHE_WARMING_CHIP_MODEL_RATE:-30000}
-      - CACHE_WARMING_SMS_MODEL_RATE=${CACHE_WARMING_SMS_MODEL_RATE:-30000}
-      - CACHE_WARMING_SMS_STRING_MODEL_RATE=${CACHE_WARMING_SMS_STRING_MODEL_RATE:-30000}
-      - CACHE_WARMING_SERVICOS_RATE=${CACHE_WARMING_SERVICOS_RATE:-60000}
-      - CACHE_WARMING_CHIP_NUMBER_CONTROL_RATE=${CACHE_WARMING_CHIP_NUMBER_CONTROL_RATE:-60000}
-      - CACHE_WARMING_V_OPERADORAS_RATE=${CACHE_WARMING_V_OPERADORAS_RATE:-60000}
-      - CACHE_WARMING_USERS_RATE=${CACHE_WARMING_USERS_RATE:-120000}
-      - CACHE_WARMING_NUMBERS_RATE=${CACHE_WARMING_NUMBERS_RATE:-120000}
-      - CACHE_WARMING_CONFIGS_RATE=${CACHE_WARMING_CONFIGS_RATE:-120000}
-      - CACHE_WARMING_BALANCE_RATE=${CACHE_WARMING_BALANCE_RATE:-300000}
-      - CACHE_WARMING_OPERATORS_RATE=${CACHE_WARMING_OPERATORS_RATE:-120000}
+      # RabbitMQ for dev
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_PORT=5672
+      - SPRING_RABBITMQ_USERNAME=admin
+      - SPRING_RABBITMQ_PASSWORD=admin123
+      - SPRING_RABBITMQ_LISTENER_SIMPLE_AUTO_STARTUP=false
+      
+      # Bypass API key validation in dev
+      - IS_SMSHUB=true
       
       # Performance tuning for development
       - TOMCAT_MAX_THREADS=${TOMCAT_MAX_THREADS:-200}
@@ -144,9 +137,9 @@ services:
       
       # Application Configuration
       - LISTEN_PORT=80
-      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_PROFILES_ACTIVE=dev
     depends_on:
-      dragonfly:
+      redis:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
@@ -154,14 +147,14 @@ services:
     networks:
       - app-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80/actuator/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
+      test: ["CMD", "curl", "-f", "http://localhost:80/test"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
 
 volumes:
-  dragonfly_data:
+  redis_data:
     driver: local
   rabbitmq_data:
     driver: local

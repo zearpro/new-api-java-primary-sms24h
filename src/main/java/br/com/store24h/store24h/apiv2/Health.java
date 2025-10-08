@@ -59,10 +59,10 @@ public class Health {
                 logger.info("|         -------" + strisWa + "--------");
                 logger.info("|        [{}][{}] Checar cache", (Object)strisWa, fltr);
                 startTimeTrecho = System.nanoTime();
-                List<String> resp = this.cacheService.getLatestNumerosDisponiveisSemFiltrarNumerosPreviosCache(0, 1, isWa, Optional.empty(), fltr, startTimeOperacao, Optional.empty());
+                List<String> resp = this.cacheService.getLatestNumerosDisponiveisSemFiltrarNumerosPreviosCache(0, 1, isWa, Optional.empty(), Optional.empty(), fltr, startTimeOperacao, Optional.empty());
                 logger.info("|        [{}][{}]  buscou {} numeros| Tempo Gasto para buscar: {}", (Object)strisWa, fltr, (Object)resp.size(), (Object)Utils.diffTimeMs(startTimeTrecho));
                 if (resp.size() <= 0) continue;
-                this.cacheService.clearNumerosDisponiveisCache(0, 1, isWa, Optional.empty(), fltr, startTimeOperacao, Optional.empty());
+                this.cacheService.clearNumerosDisponiveisCache(0, 1, isWa, Optional.empty(), Optional.empty(), fltr, startTimeOperacao, Optional.empty());
             }
             System.out.println("");
             System.out.println("");

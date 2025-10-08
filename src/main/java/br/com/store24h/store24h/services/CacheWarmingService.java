@@ -5,7 +5,6 @@ import br.com.store24h.store24h.repository.ServicosRepository;
 import br.com.store24h.store24h.repository.UserDbRepository;
 import br.com.store24h.store24h.model.Servico;
 import br.com.store24h.store24h.model.User;
-import br.com.store24h.store24h.services.UserBalanceService;
 import org.springframework.data.domain.Sort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,6 +21,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
+import javax.persistence.EntityManager;
+import javax.persistence.PersistenceContext;
 
 /**
  * Cache Warming Service - Proactively loads frequently accessed data into cache
@@ -53,8 +54,10 @@ public class CacheWarmingService {
     @Autowired
     private RedisSetService redisSetService;
 
-    @Autowired
-    private br.com.store24h.store24h.repository.ChipRepository chipRepository;
+    // Removed unused ChipRepository field; using native queries for latest ordering
+    
+    @PersistenceContext
+    private EntityManager entityManager;
     
     @Value("${cache.warming.enabled:true}")
     private boolean cacheWarmingEnabled;
@@ -524,6 +527,7 @@ public class CacheWarmingService {
                         (Integer) config.get("ativo"), 
                         (Boolean) config.get("isWa"),
                         operadora,
+                        Optional.empty(),
                         filtro,
                         System.nanoTime(),
                         Optional.empty()
@@ -683,11 +687,59 @@ public class CacheWarmingService {
         try {
             logger.debug("🔥 Populating Redis number pools from chip_model...");
 
-            // Get all active, non-rented chips
-            List<br.com.store24h.store24h.model.ChipModel> availableChips =
-                chipRepository.findByAlugadoAndAtivo(false, true, 10000); // Limit to 10k for safety
+            // Get latest active, non-rented chips from chip_model and chip_model_online ordered by id desc
+            int limit = 10000;
+            @SuppressWarnings("unchecked")
+            List<Object[]> rows1 = entityManager.createNativeQuery(
+                "SELECT id, operadora, number, country FROM chip_model WHERE alugado = 0 AND ativo = 1 ORDER BY id DESC LIMIT " + limit
+            ).getResultList();
 
-            // Group by operator, service, country for efficient pool population
+            List<Object[]> rows2 = new ArrayList<>();
+            try {
+                @SuppressWarnings("unchecked")
+                List<Object[]> tmp = entityManager.createNativeQuery(
+                    "SELECT id, operadora, number, country FROM chip_model_online WHERE alugado = 0 AND ativo = 1 ORDER BY id DESC LIMIT " + limit
+                ).getResultList();
+                rows2 = tmp;
+            } catch (Exception ignored) {
+                // chip_model_online may not exist in some environments
+            }
+
+            // Deduplicate by number, keeping newest first across both sources
+            LinkedHashMap<String, String[]> numberToData = new LinkedHashMap<>();
+            for (Object[] r : rows1) {
+                String number = r[2] != null ? r[2].toString() : null;
+                if (number != null && !numberToData.containsKey(number)) {
+                    numberToData.put(number, new String[] {
+                        r[1] != null ? r[1].toString() : "any", // operadora
+                        number,
+                        r[3] != null ? r[3].toString() : "0"    // country
+                    });
+                }
+            }
+            for (Object[] r : rows2) {
+                String number = r[2] != null ? r[2].toString() : null;
+                if (number != null && !numberToData.containsKey(number)) {
+                    numberToData.put(number, new String[] {
+                        r[1] != null ? r[1].toString() : "any",
+                        number,
+                        r[3] != null ? r[3].toString() : "0"
+                    });
+                }
+            }
+
+            List<br.com.store24h.store24h.model.ChipModel> availableChips = new ArrayList<>();
+            for (Map.Entry<String, String[]> e : numberToData.entrySet()) {
+                br.com.store24h.store24h.model.ChipModel chip = new br.com.store24h.store24h.model.ChipModel();
+                chip.setOperadora(e.getValue()[0]);
+                chip.setNumber(e.getValue()[1]);
+                chip.setCountry(e.getValue()[2]);
+                chip.setAtivo(true);
+                chip.setAlugado(false);
+                availableChips.add(chip);
+            }
+
+            // Group by service, country, operator for efficient pool population (matches Redis key order)
             Map<String, Set<String>> poolGroups = new HashMap<>();
 
             for (br.com.store24h.store24h.model.ChipModel chip : availableChips) {
@@ -699,7 +751,7 @@ public class CacheWarmingService {
 
                     // Extract operator from chip (you may need to adjust this based on your data model)
                     String operator = extractOperator(chip);
-                    String country = "0"; // Default country - adjust based on your model
+                    String country = chip.getCountry();
 
                     // Populate pools for major services
                     List<String> majorServices = Arrays.asList(
@@ -707,13 +759,13 @@ public class CacheWarmingService {
                     );
 
                     for (String service : majorServices) {
-                        String poolKey = String.format("%s:%s:%s", operator, service, country);
+                        String poolKey = String.format("%s:%s:%s", service, country, operator);
                         poolGroups.computeIfAbsent(poolKey, k -> new HashSet<>()).add(chip.getNumber());
                     }
 
                     // Also add to "any" operator pools
                     for (String service : majorServices) {
-                        String poolKey = String.format("any:%s:%s", service, country);
+                        String poolKey = String.format("%s:%s:%s", service, country, "any");
                         poolGroups.computeIfAbsent(poolKey, k -> new HashSet<>()).add(chip.getNumber());
                     }
 
@@ -728,13 +780,14 @@ public class CacheWarmingService {
                 try {
                     String[] parts = entry.getKey().split(":");
                     if (parts.length == 3) {
-                        String operator = parts[0];
-                        String service = parts[1];
-                        String country = parts[2];
+                        String service = parts[0];
+                        String country = parts[1];
+                        String operator = parts[2];
                         Set<String> numbers = entry.getValue();
 
                         if (!numbers.isEmpty()) {
-                            redisSetService.populateAvailablePoolSwap(operator, service, country, numbers);
+                            // Signature: (serviceId, country, operator, numbers)
+                            redisSetService.populateAvailablePoolSwap(service, country, operator, numbers);
                             poolsPopulated++;
 
                             logger.debug("✅ Pool populated: {} numbers for {}:{}:{}",

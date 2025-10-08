@@ -136,8 +136,10 @@ public class FullPersistenceService {
                     if (id > newMaxId) newMaxId = id;
                 }
                 
-                // Update Redis
-                redisTemplate.opsForValue().multiSet(newData);
+                // Update Redis (per-key set to ensure correct serialization)
+                for (Map.Entry<String, Object> entry : newData.entrySet()) {
+                    redisTemplate.opsForValue().set(entry.getKey(), entry.getValue());
+                }
                 redisTemplate.expire(CHIP_MODEL_KEY, CACHE_TTL_HOURS, TimeUnit.HOURS);
                 
                 lastChipModelSync = LocalDateTime.now();
@@ -214,8 +216,10 @@ public class FullPersistenceService {
                 cacheData.put(key, data);
             }
             
-            // Batch set to Redis
-            redisTemplate.opsForValue().multiSet(cacheData);
+            // Batch set to Redis (per-key to avoid converter issues)
+            for (Map.Entry<String, Object> entry : cacheData.entrySet()) {
+                redisTemplate.opsForValue().set(entry.getKey(), entry.getValue());
+            }
             redisTemplate.expire(CHIP_MODEL_KEY, CACHE_TTL_HOURS, TimeUnit.HOURS);
             
             lastChipModelSync = LocalDateTime.now();
@@ -239,7 +243,9 @@ public class FullPersistenceService {
             Map<String, Object> cacheData = new HashMap<>();
             
             // Placeholder implementation
-            redisTemplate.opsForValue().multiSet(cacheData);
+            for (Map.Entry<String, Object> entry : cacheData.entrySet()) {
+                redisTemplate.opsForValue().set(entry.getKey(), entry.getValue());
+            }
             redisTemplate.expire(CHIP_MODEL_ONLINE_KEY, CACHE_TTL_HOURS, TimeUnit.HOURS);
             
             lastChipModelOnlineSync = LocalDateTime.now();
@@ -274,7 +280,9 @@ public class FullPersistenceService {
                 cacheData.put(key, data);
             }
             
-            redisTemplate.opsForValue().multiSet(cacheData);
+            for (Map.Entry<String, Object> entry : cacheData.entrySet()) {
+                redisTemplate.opsForValue().set(entry.getKey(), entry.getValue());
+            }
             redisTemplate.expire(SERVICOS_KEY, CACHE_TTL_HOURS, TimeUnit.HOURS);
             
             lastServicosSync = LocalDateTime.now();

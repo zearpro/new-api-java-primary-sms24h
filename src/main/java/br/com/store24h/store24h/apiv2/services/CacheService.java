@@ -138,30 +138,36 @@ public class CacheService {
         return null;
     }
 
-    public void clearNumerosDisponiveisCache(int alugado, int ativo, boolean isWa, Optional<String> operadora, List<String> filtroDeNumerosParaWhatsApp, long startTimeOperacao, Optional<String> agenteId) {
-        String cacheKey = String.format("%d,%d,%s,%s,%s,", alugado, ativo, isWa, operadora.orElse(""), filtroDeNumerosParaWhatsApp.toString().replaceAll("[\\[\\]\\s]", ""));
+    public void clearNumerosDisponiveisCache(int alugado, int ativo, boolean isWa, Optional<String> operadora, Optional<String> country, List<String> filtroDeNumerosParaWhatsApp, long startTimeOperacao, Optional<String> agenteId) {
+        String cacheKey = String.format("%d,%d,%s,%s,%s,%s", alugado, ativo, isWa, operadora.orElse(""), country.orElse(""), filtroDeNumerosParaWhatsApp.toString().replaceAll("[\\[\\]\\s]", ""));
         Cache cache = this.cacheManager.getCache("getNumerosDisponiveisSemFiltrarNumerosPreviosCache");
         cache.evict((Object)cacheKey);
     }
 
-    @Cacheable(value={"getLatestNumerosDisponiveisSemFiltrarNumerosPreviosCache"}, key="{#alugado, #ativo, #isWa, #operadora.orElse(''), #filtroDeNumerosParaWhatsApp, #agenteId.orElse('')}")
-    public List<String> getLatestNumerosDisponiveisSemFiltrarNumerosPreviosCache(int alugado, int ativo, boolean isWa, Optional<String> operadora, List<String> filtroDeNumerosParaWhatsApp, long startTimeOperacao, Optional<String> agenteId) {
-        return this.getNumerosDisponiveisSemFiltrarNumerosPrevios(alugado, ativo, isWa, operadora, filtroDeNumerosParaWhatsApp, Optional.empty(), startTimeOperacao, agenteId);
+    @Cacheable(value={"getLatestNumerosDisponiveisSemFiltrarNumerosPreviosCache"}, key="{#alugado, #ativo, #isWa, #operadora.orElse(''), #country.orElse(''), #filtroDeNumerosParaWhatsApp, #agenteId.orElse('')}")
+    public List<String> getLatestNumerosDisponiveisSemFiltrarNumerosPreviosCache(int alugado, int ativo, boolean isWa, Optional<String> operadora, Optional<String> country, List<String> filtroDeNumerosParaWhatsApp, long startTimeOperacao, Optional<String> agenteId) {
+        return this.getNumerosDisponiveisSemFiltrarNumerosPrevios(alugado, ativo, isWa, operadora, country, filtroDeNumerosParaWhatsApp, Optional.empty(), startTimeOperacao, agenteId);
     }
 
-    @Cacheable(value={"getNumerosDisponiveisSemFiltrarNumerosPreviosCache"}, key="{#alugado, #ativo, #isWa, #operadora.orElse(''), #filtroDeNumerosParaWhatsApp, #agenteId.orElse('')}")
-    public List<String> getNumerosDisponiveisSemFiltrarNumerosPreviosCache(int alugado, int ativo, boolean isWa, Optional<String> operadora, List<String> filtroDeNumerosParaWhatsApp, long startTimeOperacao, Optional<String> agenteId) {
+    @Cacheable(value={"getNumerosDisponiveisSemFiltrarNumerosPreviosCache"}, key="{#alugado, #ativo, #isWa, #operadora.orElse(''), #country.orElse(''), #filtroDeNumerosParaWhatsApp, #agenteId.orElse('')}")
+    public List<String> getNumerosDisponiveisSemFiltrarNumerosPreviosCache(int alugado, int ativo, boolean isWa, Optional<String> operadora, Optional<String> country, List<String> filtroDeNumerosParaWhatsApp, long startTimeOperacao, Optional<String> agenteId) {
         CacheService self = (CacheService)this.applicationContext.getBean(CacheService.class);
-        return self.getLatestNumerosDisponiveisSemFiltrarNumerosPreviosCache(alugado, ativo, isWa, operadora, filtroDeNumerosParaWhatsApp, startTimeOperacao, agenteId);
+        return self.getLatestNumerosDisponiveisSemFiltrarNumerosPreviosCache(alugado, ativo, isWa, operadora, country, filtroDeNumerosParaWhatsApp, startTimeOperacao, agenteId);
     }
 
-    public List<String> getNumerosDisponiveisSemFiltrarNumerosPrevios(int alugado, int ativo, boolean isWa, Optional<String> operadora, List<String> filtroDeNumerosParaWhatsApp, Optional<String> numeroRecompra, long startTimeOperacao, Optional<String> agenteId) {
+    public List<String> getNumerosDisponiveisSemFiltrarNumerosPrevios(int alugado, int ativo, boolean isWa, Optional<String> operadora, Optional<String> country, List<String> filtroDeNumerosParaWhatsApp, Optional<String> numeroRecompra, long startTimeOperacao, Optional<String> agenteId) {
         String addWhats = "AND c.vendawhatsapp IN (:valoresVendaWhatsApp)";
         String addOperadora = "AND c.operadora = :operadora";
+        String addCountry = "AND c.country = :country";
         String numeroEquals = "AND c.number = :number";
         String agentEquals = "AND c.pc_id in(select id from smshub.Operador where idCliente in (select id from smshub.AgenteUSUARIO where id=:agenteId))";
         String sql = "    SELECT c.number\n    FROM chip_model c\n    WHERE c.alugado = :alugado\n    AND c.ativo = :ativo\n    {0}\n    {1}\n    {2}\n    {3}\n";
-        String formatted = MessageFormat.format(sql, filtroDeNumerosParaWhatsApp.size() > 0 && isWa ? addWhats : "", operadora.isPresent() && !operadora.get().toLowerCase().contains("any") ? addOperadora : "", numeroRecompra.isPresent() ? numeroEquals : "", agenteId.isPresent() ? agentEquals : "");
+        String formatted = MessageFormat.format(sql,
+                filtroDeNumerosParaWhatsApp.size() > 0 && isWa ? addWhats : "",
+                addCountry,
+                operadora.isPresent() && !operadora.get().toLowerCase().contains("any") ? addOperadora : "",
+                numeroRecompra.isPresent() ? numeroEquals : ""
+        ) + (agenteId.isPresent() ? " " + agentEquals : "");
         Query query = this.entityManager.createNativeQuery(formatted);
         String formattedQuery = formatted.replace(":alugado", Utils.stringToSQL(alugado)).replace(":ativo", Utils.stringToSQL(ativo));
         query.setParameter("alugado", (Object)alugado);
@@ -169,6 +175,10 @@ public class CacheService {
         if (filtroDeNumerosParaWhatsApp.size() > 0 && isWa) {
             query.setParameter("valoresVendaWhatsApp", filtroDeNumerosParaWhatsApp);
             formattedQuery = formattedQuery.replace(":valoresVendaWhatsApp", Utils.ListToSql(filtroDeNumerosParaWhatsApp));
+        }
+        if (country.isPresent()) {
+            query.setParameter("country", (Object)country.get());
+            formattedQuery = formattedQuery.replace(":country", Utils.stringToSQL(country.get()));
         }
         if (operadora.isPresent() && !operadora.get().toLowerCase().contains("any")) {
             query.setParameter("operadora", (Object)operadora.get());

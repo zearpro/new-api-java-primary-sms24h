@@ -204,10 +204,10 @@ public class NumerosService {
         queryStrategy = "s2";
         startTimeTrecho = System.nanoTime();
         if (numeroRecompra.isPresent()) {
-            numerosDisponiveisParaEsteServico.addAll(this.cacheService.getNumerosDisponiveisSemFiltrarNumerosPrevios(0, 1, serviceCache.getAlias().equals("wa"), operator, filtroDeNumerosParaWhatsApp, numeroRecompra, startTimeOperacao, Optional.ofNullable(agenteId)));
+            numerosDisponiveisParaEsteServico.addAll(this.cacheService.getNumerosDisponiveisSemFiltrarNumerosPrevios(0, 1, serviceCache.getAlias().equals("wa"), operator, country, filtroDeNumerosParaWhatsApp, numeroRecompra, startTimeOperacao, Optional.ofNullable(agenteId)));
             Utils.calcTime(startTimeOperacao, startTimeTrecho, "Tempo para getNumerosDisponiveisSemFiltrarNumerosPrevios");
         } else {
-            numerosDisponiveisParaEsteServico.addAll(this.cacheService.getNumerosDisponiveisSemFiltrarNumerosPreviosCache(0, 1, serviceCache.getAlias().equals("wa"), operator, filtroDeNumerosParaWhatsApp, startTimeOperacao, Optional.ofNullable(agenteId)));
+            numerosDisponiveisParaEsteServico.addAll(this.cacheService.getNumerosDisponiveisSemFiltrarNumerosPreviosCache(0, 1, serviceCache.getAlias().equals("wa"), operator, country, filtroDeNumerosParaWhatsApp, startTimeOperacao, Optional.ofNullable(agenteId)));
             Utils.calcTime(startTimeOperacao, startTimeTrecho, "Tempo para getNumerosDisponiveisSemFiltrarNumerosPreviosCache");
         }
         if (serviceCache.getAlias().equals("wa") && !userCache.getWhatsAppEnabled() && numerosDisponiveisParaEsteServico.size() == 0) {
@@ -217,7 +217,7 @@ public class NumerosService {
             return new NumeroServiceResponse(NumerosServiceResponseErrorEnum.NO_NUMBERS);
         }
         startTimeTrecho = System.nanoTime();
-        Optional<ChipModel> chipModelOptional = this.escolherChip(numerosDisponiveisParaEsteServico, serviceCache.getAlias(), isGetExtra);
+        Optional<ChipModel> chipModelOptional = this.escolherChip(numerosDisponiveisParaEsteServico, serviceCache.getAlias(), isGetExtra, country, operator);
         Utils.calcTime(startTimeOperacao, startTimeTrecho, "Tempo para escolher um chip");
         if (serviceCache.getAlias().equals("wa") && !userCache.getWhatsAppEnabled() && chipModelOptional.isEmpty() && this.servicesHubService.getService(serviceCache.getAlias()).get().getTotalQuantity() > 0) {
             return new NumeroServiceResponse(NumerosServiceResponseErrorEnum.FORBIDEN_SERVICE);
@@ -243,6 +243,13 @@ public class NumerosService {
             }
         }
         ChipModel chipModel = chipModelOptional.get();
+        // Final safety check: enforce exact country and operator (when provided)
+        if (country.isPresent() && !country.get().equals(chipModel.getCountry())) {
+            return new NumeroServiceResponse(NumerosServiceResponseErrorEnum.NO_NUMBERS);
+        }
+        if (operator.isPresent() && !operator.get().equalsIgnoreCase("any") && !operator.get().equalsIgnoreCase(chipModel.getOperadora())) {
+            return new NumeroServiceResponse(NumerosServiceResponseErrorEnum.NO_NUMBERS);
+        }
         startTimeTrecho = System.nanoTime();
         Activation activation = this.activationService.newActivation(user, serviceCache, chipModel.getNumber(), apiKey, version);
         String chipNumber = chipModel.getNumber();
@@ -269,7 +276,7 @@ public class NumerosService {
         return new IsCachedStatusResponse(cacheKey, resp);
     }
 
-    private Optional<ChipModel> escolherChip(List<String> numerosDisponiveisParaEsteServico, String service, boolean isExtra) {
+    private Optional<ChipModel> escolherChip(List<String> numerosDisponiveisParaEsteServico, String service, boolean isExtra, Optional<String> country, Optional<String> operator) {
         long startTimeOperacao = System.nanoTime();
         long startTimeTrecho = System.nanoTime();
         Collections.shuffle(numerosDisponiveisParaEsteServico);
@@ -283,15 +290,30 @@ public class NumerosService {
             startTimeTrecho = System.nanoTime();
             Utils.calcTime(startTimeOperacao, startTimeTrecho, "      [chunkNumero] start removeNumerosQueJaPossuemOServico");
             List<ChipModel> disponiveis = this.removeNumerosQueJaPossuemOServico(chunkNumero, service, isExtra, startTimeOperacao);
+            // Enforce exact country + operator (when operator != any)
+            List<ChipModel> filteredDisponiveis = disponiveis.stream()
+                .filter(cm -> {
+                    if (country.isPresent()) {
+                        return country.get().equals(cm.getCountry());
+                    }
+                    return true;
+                })
+                .filter(cm -> {
+                    if (operator.isPresent() && !operator.get().equalsIgnoreCase("any")) {
+                        return operator.get().equalsIgnoreCase(cm.getOperadora());
+                    }
+                    return true;
+                })
+                .collect(Collectors.toList());
             Utils.calcTime(startTimeOperacao, startTimeTrecho, "      [chunkNumero] end removeNumerosQueJaPossuemOServico");
             startTimeTrecho = System.nanoTime();
-            Collections.shuffle(disponiveis);
+            Collections.shuffle(filteredDisponiveis);
             Utils.calcTime(startTimeOperacao, startTimeTrecho, "      [chunkNumero] shuffle nos disponiveis");
-            List chipNumbersDisponiveis = disponiveis.stream().map(ChipModel::getNumber).collect(Collectors.toList());
+            List chipNumbersDisponiveis = filteredDisponiveis.stream().map(ChipModel::getNumber).collect(Collectors.toList());
             ArrayList<String> filteredList = new ArrayList<String>(chunkNumero);
             filteredList.removeAll(chipNumbersDisponiveis);
             System.out.println(Utils.ListToSql(filteredList));
-            Iterator<ChipModel> iterator = disponiveis.iterator();
+            Iterator<ChipModel> iterator = filteredDisponiveis.iterator();
             if (!iterator.hasNext()) continue;
             ChipModel chipModel = iterator.next();
             return Optional.of(chipModel);
