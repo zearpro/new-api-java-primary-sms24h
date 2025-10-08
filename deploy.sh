@@ -41,61 +41,19 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-# Check if .env.prod exists
-if [ ! -f ".env.prod" ]; then
-    print_error ".env.prod file not found!"
-    print_status "Creating .env.prod template..."
-    cat > .env.prod << EOF
-# Database Configuration
-MYSQL_HOST=your-production-mysql-host
-MYSQL_USER=your-production-mysql-user
-MYSQL_PASSWORD=your-production-mysql-password
-MYSQL_DATABASE=coredb
-MYSQL_PORT=3306
-
-# MongoDB Configuration
-MONGO_URL=mongodb://your-production-mongo-host:27017/ativacoes
-
-# Redis Configuration (Production)
-REDIS_HOST=your-production-redis-host
-REDIS_PORT=6379
-REDIS_SSL=true
-REDIS_PASSWORD=your-redis-password
-
-# RabbitMQ Configuration (Production)
-RABBITMQ_HOST=your-production-rabbitmq-host
-RABBITMQ_PORT=5672
-RABBITMQ_USERNAME=your-rabbitmq-user
-RABBITMQ_PASSWORD=your-rabbitmq-password
-
-# Kafka Configuration (Production)
-KAFKA_BOOTSTRAP_SERVERS=your-production-kafka:9092
-
-# Performance Tuning (Production)
-TOMCAT_MAX_THREADS=500
-TOMCAT_ACCEPT_COUNT=2000
-TOMCAT_MIN_SPARE_THREADS=100
-TOMCAT_MAX_CONNECTIONS=20000
-ASYNC_EXECUTOR_CORE_POOL_SIZE=100
-ASYNC_EXECUTOR_MAX_POOL_SIZE=200
-ASYNC_EXECUTOR_QUEUE_CAPACITY=2000
-ASYNC_EXECUTOR_THREAD_NAME_PREFIX=ProdThread-
-TOMCAT_THREADS_MAX=500
-TOMCAT_THREADS_MIN_SPARE=100
-HIKARI_MINIMUM_IDLE=20
-HIKARI_MAXIMUM_POOL_SIZE=50
-
-# Security
-IS_SMSHUB=false
-ENABLE_API_KEY_VALIDATION=true
-
-# Monitoring
-ENABLE_METRICS=true
-ENABLE_HEALTH_CHECKS=true
-EOF
-    print_warning "Please edit .env.prod with your actual production credentials!"
+# Check if .env exists
+if [ ! -f ".env" ]; then
+    print_error ".env file not found!"
+    print_status "Please create .env file with your production credentials"
+    print_status "You can copy from .env.dev template and update with production values"
     exit 1
 fi
+
+# Load environment variables from .env
+print_status "Loading environment variables from .env..."
+set -a  # automatically export all variables
+source .env
+set +a  # stop automatically exporting
 
 # Check if debezium-config directory exists
 if [ ! -d "debezium-config" ]; then
@@ -390,7 +348,7 @@ EOF
 
 # Stop any existing containers
 print_status "Stopping existing production containers..."
-docker compose -f docker-compose.prod.yml --env-file .env.prod down --remove-orphans || true
+docker compose -f docker-compose.prod.yml --env-file .env down --remove-orphans || true
 
 # Clean up old images (optional)
 if [ "$1" = "--clean" ]; then
@@ -401,7 +359,7 @@ fi
 
 # Start CDC infrastructure first
 print_status "Starting CDC infrastructure (Zookeeper, Kafka, Debezium)..."
-docker compose -f docker-compose.prod.yml --env-file .env.prod up -d zookeeper kafka debezium-connect
+docker compose -f docker-compose.prod.yml --env-file .env up -d zookeeper kafka debezium-connect
 
 # Wait for CDC services to be ready
 print_status "Waiting for CDC services to be ready..."
@@ -439,7 +397,7 @@ done
 
 # Start Hono Accelerator
 print_status "Starting Hono Accelerator..."
-docker compose -f docker-compose.prod.yml --env-file .env.prod up -d hono-accelerator
+docker compose -f docker-compose.prod.yml --env-file .env up -d hono-accelerator
 
 # Wait for Hono Accelerator to be ready
 print_status "Waiting for Hono Accelerator to be ready..."
@@ -447,7 +405,7 @@ sleep 15
 
 # Start main API service
 print_status "Starting Store24h API service..."
-docker compose -f docker-compose.prod.yml --env-file .env.prod up -d store24h-api
+docker compose -f docker-compose.prod.yml --env-file .env up -d store24h-api
 
 # Wait for API to be ready
 print_status "Waiting for Store24h API to be ready..."
@@ -493,7 +451,7 @@ rm -f /tmp/mysql-connector-prod.json
 
 # Show service status
 print_status "Checking all services status..."
-docker compose -f docker-compose.prod.yml --env-file .env.prod ps
+docker compose -f docker-compose.prod.yml --env-file .env ps
 
 # Setup log rotation
 print_status "Setting up log rotation..."
@@ -517,7 +475,7 @@ echo "=== Store24h Production Services Status ==="
 echo "Date: $(date)"
 echo ""
 echo "=== Docker Services ==="
-docker compose -f docker-compose.prod.yml --env-file .env.prod ps
+docker compose -f docker-compose.prod.yml --env-file .env ps
 echo ""
 echo "=== API Health ==="
 curl -s http://localhost:80/actuator/health | jq . || echo "API not responding"
@@ -549,8 +507,8 @@ echo "  • Debezium Connect: http://localhost:8083"
 echo ""
 print_status "🔧 Useful commands:"
 echo "  • View logs: docker logs store24h-api-prod -f"
-echo "  • Stop all: docker compose -f docker-compose.prod.yml --env-file .env.prod down"
-echo "  • Restart API: docker compose -f docker-compose.prod.yml --env-file .env.prod restart store24h-api"
+echo "  • Stop all: docker compose -f docker-compose.prod.yml --env-file .env down"
+echo "  • Restart API: docker compose -f docker-compose.prod.yml --env-file .env restart store24h-api"
 echo "  • Check CDC topics: docker exec store24h-kafka-prod kafka-topics --bootstrap-server localhost:9092 --list"
 echo "  • Monitor services: /usr/local/bin/monitor-services.sh"
 echo "  • View monitoring logs: tail -f /var/log/store24h-monitor.log"

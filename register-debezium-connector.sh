@@ -5,6 +5,14 @@
 
 set -e
 
+# Load environment variables from .env if it exists
+if [ -f ".env" ]; then
+    echo "📋 Loading environment variables from .env..."
+    set -a  # automatically export all variables
+    source .env
+    set +a  # stop automatically exporting
+fi
+
 # Check if required environment variables are set
 if [ -z "$MYSQL_HOST" ] || [ -z "$MYSQL_USER" ] || [ -z "$MYSQL_PASSWORD" ]; then
     echo "❌ Error: Required MySQL environment variables not set:"
