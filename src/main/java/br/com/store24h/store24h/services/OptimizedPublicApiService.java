@@ -5,7 +5,7 @@ import br.com.store24h.store24h.model.Servico;
 import br.com.store24h.store24h.model.User;
 import br.com.store24h.store24h.apiv2.TipoDeApiEnum;
 import br.com.store24h.store24h.repository.ServicosRepository;
-import br.com.store24h.store24h.services.RedisSetService;
+import br.com.store24h.store24h.repository.ChipRepository;
 import br.com.store24h.store24h.services.core.TipoDeApiNotPermitedException;
 import br.com.store24h.store24h.apiv2.exceptions.ApiKeyNotFoundException;
 import org.slf4j.Logger;
@@ -49,6 +49,9 @@ public class OptimizedPublicApiService {
     
     @Autowired
     private RedisSetService redisSetService;
+    
+    @Autowired
+    private ChipRepository chipRepository;
     
     /**
      * Optimized getPrices with full caching and Redis pool counts
