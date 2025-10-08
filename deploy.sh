@@ -389,12 +389,16 @@ done
 # Check if Debezium Connect is ready
 print_status "Checking Debezium Connect readiness..."
 for i in {1..30}; do
-    if curl -f http://localhost:8083/connectors > /dev/null 2>&1; then
+    if docker exec store24h-debezium-connect-prod curl -f http://localhost:8083/connectors > /dev/null 2>&1; then
         print_success "Debezium Connect is ready!"
         break
     fi
     if [ $i -eq 30 ]; then
         print_error "Debezium Connect failed to start within 5 minutes"
+        print_status "Checking container status..."
+        docker ps | grep debezium-connect
+        print_status "Checking container logs..."
+        docker logs store24h-debezium-connect-prod --tail 20
         exit 1
     fi
     print_status "Waiting for Debezium Connect... ($i/30)"
@@ -441,15 +445,18 @@ sleep 15
 # Replace environment variables in connector config
 envsubst < debezium-config/mysql-connector.json > /tmp/mysql-connector-prod.json
 
+# Copy connector config to container
+docker cp /tmp/mysql-connector-prod.json store24h-debezium-connect-prod:/tmp/mysql-connector-prod.json
+
 # Register the connector
-if curl -X POST http://localhost:8083/connectors \
+if docker exec store24h-debezium-connect-prod curl -X POST http://localhost:8083/connectors \
     -H "Content-Type: application/json" \
     -d @/tmp/mysql-connector-prod.json > /dev/null 2>&1; then
     print_success "Debezium MySQL connector registered successfully!"
 else
     print_warning "Failed to register Debezium connector. You may need to register it manually."
     print_status "You can register it manually with:"
-    print_status "curl -X POST http://localhost:8083/connectors -H 'Content-Type: application/json' -d @debezium-config/mysql-connector.json"
+    print_status "docker exec store24h-debezium-connect-prod curl -X POST http://localhost:8083/connectors -H 'Content-Type: application/json' -d @/tmp/mysql-connector-prod.json"
 fi
 
 # Clean up temp file
