@@ -426,14 +426,14 @@ print_status "Checking API health..."
 for i in {1..30}; do
     if curl -f http://localhost:80/actuator/health > /dev/null 2>&1; then
         print_success "Store24h API is healthy!"
-        break
-    fi
+    break
+  fi
     if [ $i -eq 30 ]; then
         print_error "Store24h API failed to start within 5 minutes"
         print_status "Checking logs..."
         docker logs store24h-api-prod --tail 50
-        exit 1
-    fi
+    exit 1
+  fi
     print_status "Waiting for API... ($i/30)"
     sleep 10
 done

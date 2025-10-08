@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Local Redis for development (persistent via AOF)
   redis:
@@ -92,11 +90,11 @@ services:
       - app-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      test: ["CMD-SHELL", "netstat -an | grep :9092 | grep LISTEN || exit 1"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 10s
+      retries: 5
+      start_period: 30s
 
   # CDC Infrastructure - Debezium Connect
   debezium-connect:
