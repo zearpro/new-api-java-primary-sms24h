@@ -29,13 +29,16 @@ async function connectRabbitMQ() {
 		rabbitConnection = await amqp.connect(rabbitUrl)
 		rabbitChannel = await rabbitConnection.createChannel()
 
-		// Declare queues
-		await rabbitChannel.assertQueue('number.assigned', { durable: true })
-		await rabbitChannel.assertQueue('activation.status.update', {
+		// Declare queues with consistent TTL to avoid PRECONDITION_FAILED mismatches
+		const queueTtlMs = parseInt(process.env.RABBITMQ_QUEUE_TTL_MS || '300000')
+		const commonQueueOptions = {
 			durable: true,
-		})
-		await rabbitChannel.assertQueue('activation.completed', { durable: true })
-		await rabbitChannel.assertQueue('number.released', { durable: true })
+			arguments: { 'x-message-ttl': queueTtlMs },
+		}
+		await rabbitChannel.assertQueue('number.assigned', commonQueueOptions)
+		await rabbitChannel.assertQueue('activation.status.update', commonQueueOptions)
+		await rabbitChannel.assertQueue('activation.completed', commonQueueOptions)
+		await rabbitChannel.assertQueue('number.released', commonQueueOptions)
 
 		console.log('✅ Connected to RabbitMQ')
 	} catch (error) {
