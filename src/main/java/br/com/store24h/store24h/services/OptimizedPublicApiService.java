@@ -87,7 +87,7 @@ public class OptimizedPublicApiService {
                     // ✅ Prefer Redis pool count if operator and country provided; fallback to DB field
                     if (operator.isPresent() && country.isPresent()) {
                         try {
-                            long poolCount = redisSetService.getAvailableCount(operator.get(), cachedService.getAlias(), country.get());
+                            long poolCount = redisSetService.getAvailableCount(cachedService.getAlias(), country.get(), operator.get());
                             priceMyJson.put("count", poolCount);
                         } catch (Exception ex) {
                             priceMyJson.put("count", cachedService.getTotalQuantity());
