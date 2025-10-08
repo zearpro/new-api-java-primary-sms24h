@@ -159,15 +159,17 @@ public class NumberAssignConsumer {
                 return false;
             }
 
-            // Step 5: Add service to number control (async for performance)
-            CompletableFuture.runAsync(() -> {
-                try {
-                    chipNumberControlService.addServiceInNumber(msg.number, servico);
-                    logger.debug("✅ Service {} added to number {}", msg.service, msg.number);
-                } catch (Exception e) {
-                    logger.error("❌ Failed to add service to number control for {}", msg.number, e);
-                }
-            });
+            // Step 5: Add service to number control SYNCHRONOUSLY to prevent race conditions
+            // This ensures the number is marked as taken before any other operations
+            try {
+                chipNumberControlService.addServiceInNumber(msg.number, servico);
+                logger.debug("✅ Service {} added to number {}", msg.service, msg.number);
+            } catch (Exception e) {
+                logger.error("❌ Failed to add service to number control for {}", msg.number, e);
+                // If we can't mark the number as taken, we should rollback
+                rollbackReservation(msg);
+                return false;
+            }
 
             // Step 6: Update activation state in Redis for fast polling
             redisSetService.setActivationState(activation.getId(), msg.number, msg.service, "STATUS_WAIT_CODE");

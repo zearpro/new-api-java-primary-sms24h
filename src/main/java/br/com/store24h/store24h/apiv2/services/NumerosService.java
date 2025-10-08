@@ -251,10 +251,17 @@ public class NumerosService {
             return new NumeroServiceResponse(NumerosServiceResponseErrorEnum.NO_NUMBERS);
         }
         startTimeTrecho = System.nanoTime();
-        Activation activation = this.activationService.newActivation(user, serviceCache, chipModel.getNumber(), apiKey, version);
+        
+        // ✅ CRITICAL FIX: Add service to number control SYNCHRONOUSLY before creating activation
+        // This prevents race conditions where the same number can be sold twice
         String chipNumber = chipModel.getNumber();
+        this.controlService.addServiceInNumber(chipNumber, serviceCache);
+        
+        // Now create activation after the number is properly marked as taken
+        Activation activation = this.activationService.newActivation(user, serviceCache, chipModel.getNumber(), apiKey, version);
+        
+        // Run other async operations after the critical sync operation
         this.executorService1.execute(() -> {
-            this.controlService.addServiceInNumber(chipNumber, serviceCache);
             try {
                 if (Utils.isHomolog() && user.getCallbackUrlId() != null && user.getTipo_de_api().equals((Object)TipoDeApiEnum.SISTEMAS)) {
                     this.logger.info("SMS_REPLICATE ADD");
