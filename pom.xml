@@ -70,6 +70,12 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
+        <!-- Spring for Apache Kafka (needed for @KafkaListener) -->
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
+        </dependency>
+
         <!-- Database -->
         <dependency>
             <groupId>mysql</groupId>
