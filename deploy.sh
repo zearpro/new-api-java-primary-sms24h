@@ -2,7 +2,7 @@
 
 # Store24h Production Deployment with CDC
 # This script deploys the complete production environment including:
-# - Redis, RabbitMQ, Kafka, Zookeeper, Debezium Connect
+# - MongoDB, Redis, RabbitMQ, Kafka, Zookeeper, Debezium Connect
 # - Store24h API with real-time CDC cache synchronization
 # - Hono Accelerator microservice
 # - Production optimizations and monitoring
@@ -228,6 +228,34 @@ services:
           memory: 512M
           cpus: '0.25'
 
+  # MongoDB Database (Production)
+  mongodb:
+    image: mongo:7.0
+    container_name: store24h-mongodb-prod
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: 6N5S0dASN1U62tNI
+      MONGO_INITDB_DATABASE: ativacoes
+    volumes:
+      - mongodb-data-prod:/data/db
+    networks:
+      - app-network-prod
+    restart: always
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+
   # Hono.js Accelerator Microservice (Production)
   hono-accelerator:
     build: ./hono-accelerator
@@ -321,6 +349,8 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
+      mongodb:
+        condition: service_healthy
     networks:
       - app-network-prod
     restart: always
@@ -346,6 +376,8 @@ volumes:
     driver: local
   kafka-data-prod:
     driver: local
+  mongodb-data-prod:
+    driver: local
 
 networks:
   app-network-prod:
@@ -363,13 +395,28 @@ if [ "$1" = "--clean" ]; then
     docker system prune -f
 fi
 
-# Start CDC infrastructure first
-print_status "Starting CDC infrastructure (Zookeeper, Kafka, Debezium)..."
-docker compose -f docker-compose.prod.yml --env-file .env up -d zookeeper kafka debezium-connect
+# Start infrastructure first
+print_status "Starting infrastructure (MongoDB, Zookeeper, Kafka, Debezium)..."
+docker compose -f docker-compose.prod.yml --env-file .env up -d mongodb zookeeper kafka debezium-connect
 
-# Wait for CDC services to be ready
-print_status "Waiting for CDC services to be ready..."
+# Wait for infrastructure services to be ready
+print_status "Waiting for infrastructure services to be ready..."
 sleep 60
+
+# Check if MongoDB is ready
+print_status "Checking MongoDB readiness..."
+for i in {1..30}; do
+    if docker exec store24h-mongodb-prod mongosh --eval "db.adminCommand('ping')" > /dev/null 2>&1; then
+        print_success "MongoDB is ready!"
+        break
+    fi
+    if [ $i -eq 30 ]; then
+        print_error "MongoDB failed to start within 5 minutes"
+        exit 1
+    fi
+    print_status "Waiting for MongoDB... ($i/30)"
+    sleep 10
+done
 
 # Check if Kafka is ready
 print_status "Checking Kafka readiness..."

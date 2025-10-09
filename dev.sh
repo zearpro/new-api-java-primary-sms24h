@@ -2,7 +2,7 @@
 
 # Store24h Development Environment with CDC
 # This script deploys the complete development environment including:
-# - Redis, RabbitMQ, Kafka, Zookeeper, Debezium Connect
+# - MongoDB, Redis, RabbitMQ, Kafka, Zookeeper, Debezium Connect
 # - Store24h API with real-time CDC cache synchronization
 # - Hono Accelerator microservice
 
@@ -46,8 +46,8 @@ MYSQL_PASSWORD=your-mysql-password
 MYSQL_DATABASE=coredb
 MYSQL_PORT=3306
 
-# MongoDB Configuration
-MONGO_URL=mongodb://your-mongo-host:27017/ativacoes
+# MongoDB Configuration (Local Docker Container)
+MONGO_URL=mongodb://root:6N5S0dASN1U62tNI@mongodb:27017/ativacoes?authSource=admin
 
 # Performance Tuning
 TOMCAT_MAX_THREADS=200
@@ -126,13 +126,28 @@ if [ "$1" = "--clean" ]; then
     docker system prune -f
 fi
 
-# Start CDC infrastructure first
-print_status "Starting CDC infrastructure (Zookeeper, Kafka, Debezium)..."
-docker compose -f docker-compose.dev.yml --env-file .env.dev up -d zookeeper kafka debezium-connect
+# Start infrastructure first
+print_status "Starting infrastructure (MongoDB, Zookeeper, Kafka, Debezium)..."
+docker compose -f docker-compose.dev.yml --env-file .env.dev up -d mongodb zookeeper kafka debezium-connect
 
-# Wait for CDC services to be ready
-print_status "Waiting for CDC services to be ready..."
+# Wait for infrastructure services to be ready
+print_status "Waiting for infrastructure services to be ready..."
 sleep 30
+
+# Check if MongoDB is ready
+print_status "Checking MongoDB readiness..."
+for i in {1..30}; do
+    if docker exec store24h-mongodb mongosh --eval "db.adminCommand('ping')" > /dev/null 2>&1; then
+        print_success "MongoDB is ready!"
+        break
+    fi
+    if [ $i -eq 30 ]; then
+        print_error "MongoDB failed to start within 5 minutes"
+        exit 1
+    fi
+    print_status "Waiting for MongoDB... ($i/30)"
+    sleep 10
+done
 
 # Check if Kafka is ready
 print_status "Checking Kafka readiness..."
@@ -239,6 +254,7 @@ echo "  • API Health: http://localhost:80/actuator/health"
 echo "  • Hono Accelerator: http://localhost:3001"
 echo "  • RabbitMQ Management: http://localhost:15672 (admin/admin123)"
 echo "  • Debezium Connect: http://localhost:8083"
+echo "  • MongoDB: localhost:27017"
 echo "  • Redis: localhost:6379"
 echo "  • Kafka: localhost:9092"
 echo ""

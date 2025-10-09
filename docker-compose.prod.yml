@@ -117,6 +117,28 @@ services:
       retries: 5
       start_period: 30s
 
+  # MongoDB Database
+  mongodb:
+    image: mongo:7.0
+    container_name: store24h-mongodb-prod
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: 6N5S0dASN1U62tNI
+      MONGO_INITDB_DATABASE: ativacoes
+    volumes:
+      - mongodb-data:/data/db
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
   hono-accelerator:
     build: ./hono-accelerator
     container_name: store24h-hono-accelerator
@@ -183,6 +205,8 @@ services:
         condition: service_healthy
       debezium-connect:
         condition: service_healthy
+      mongodb:
+        condition: service_healthy
     networks:
       - app-network
     restart: unless-stopped
@@ -201,6 +225,8 @@ volumes:
   zookeeper-logs:
     driver: local
   kafka-data:
+    driver: local
+  mongodb-data:
     driver: local
 
 networks:
