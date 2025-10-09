@@ -1,14 +1,14 @@
 #!/bin/bash
 
-# Store24h Development Environment with CDC
+# Store24h Development Environment
 # This script deploys the complete development environment including:
-# - MongoDB, Redis, RabbitMQ, Kafka, Zookeeper, Debezium Connect
-# - Store24h API with real-time CDC cache synchronization
+# - MongoDB, Redis, RabbitMQ
+# - Store24h API with scheduled cache synchronization
 # - Hono Accelerator microservice
 
 set -e
 
-echo "🚀 Starting Store24h Development Environment with CDC..."
+echo "🚀 Starting Store24h Development Environment..."
 
 # Colors for output
 RED='\033[0;31m'
@@ -66,54 +66,6 @@ EOF
     exit 1
 fi
 
-# Check if debezium-config directory exists
-if [ ! -d "debezium-config" ]; then
-    print_error "debezium-config directory not found!"
-    print_status "Creating debezium-config directory..."
-    mkdir -p debezium-config
-fi
-
-# Check if mysql-connector.json exists
-if [ ! -f "debezium-config/mysql-connector.json" ]; then
-    print_error "debezium-config/mysql-connector.json not found!"
-    print_status "Creating mysql-connector.json template..."
-    cat > debezium-config/mysql-connector.json << EOF
-{
-  "name": "mysql-cache-sync-connector",
-  "config": {
-    "connector.class": "io.debezium.connector.mysql.MySqlConnector",
-    "database.hostname": "\${MYSQL_HOST}",
-    "database.port": "3306",
-    "database.user": "\${MYSQL_USER}",
-    "database.password": "\${MYSQL_PASSWORD}",
-    "database.server.id": "184054",
-    "database.server.name": "coredb",
-    "database.include.list": "coredb",
-    "table.include.list": "coredb.chip_model,coredb.chip_model_online,coredb.servicos,coredb.v_operadoras,coredb.chip_number_control,coredb.chip_number_control_alias_service,coredb.usuario,coredb.activation",
-    "database.history.kafka.bootstrap.servers": "kafka:9092",
-    "database.history.kafka.topic": "dbhistory.coredb",
-    "include.schema.changes": "false",
-    "snapshot.mode": "initial",
-    "snapshot.locking.mode": "minimal",
-    "transforms": "route",
-    "transforms.route.type": "org.apache.kafka.connect.transforms.RegexRouter",
-    "transforms.route.regex": "coredb\\\\.(.*)",
-    "transforms.route.replacement": "cache-sync.$1",
-    "key.converter": "org.apache.kafka.connect.json.JsonConverter",
-    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
-    "key.converter.schemas.enable": "false",
-    "value.converter.schemas.enable": "false",
-    "binlog.buffer.size": "32768",
-    "max.batch.size": "2048",
-    "max.queue.size": "8192",
-    "poll.interval.ms": "1000",
-    "connect.timeout.ms": "30000",
-    "tombstones.on.delete": "false"
-  }
-}
-EOF
-    print_warning "Please update debezium-config/mysql-connector.json with your database credentials!"
-fi
 
 # Stop any existing containers
 print_status "Stopping existing containers..."
@@ -127,65 +79,13 @@ if [ "$1" = "--clean" ]; then
 fi
 
 # Start infrastructure first
-print_status "Starting infrastructure (MongoDB, Zookeeper, Kafka, Debezium)..."
-docker compose -f docker-compose.dev.yml --env-file .env.dev up -d mongodb zookeeper kafka debezium-connect
+print_status "Starting infrastructure (MongoDB, Redis, RabbitMQ)..."
+docker compose -f docker-compose.dev.yml --env-file .env.dev up -d redis rabbitmq
 
 # Wait for infrastructure services to be ready
 print_status "Waiting for infrastructure services to be ready..."
-sleep 30
-
-# Check if MongoDB is ready
-print_status "Checking MongoDB readiness..."
-for i in {1..30}; do
-    if docker exec store24h-mongodb mongosh --eval "db.adminCommand('ping')" > /dev/null 2>&1; then
-        print_success "MongoDB is ready!"
-        break
-    fi
-    if [ $i -eq 30 ]; then
-        print_error "MongoDB failed to start within 5 minutes"
-        exit 1
-    fi
-    print_status "Waiting for MongoDB... ($i/30)"
-    sleep 10
-done
-
-# Check if Kafka is ready
-print_status "Checking Kafka readiness..."
-for i in {1..30}; do
-    if docker exec store24h-kafka kafka-broker-api-versions --bootstrap-server localhost:9092 > /dev/null 2>&1; then
-        print_success "Kafka is ready!"
-        break
-    fi
-    if [ $i -eq 30 ]; then
-        print_error "Kafka failed to start within 5 minutes"
-        exit 1
-    fi
-    print_status "Waiting for Kafka... ($i/30)"
-    sleep 10
-done
-
-# Check if Debezium Connect is ready
-print_status "Checking Debezium Connect readiness..."
-for i in {1..30}; do
-    if curl -f http://localhost:8083/connectors > /dev/null 2>&1; then
-        print_success "Debezium Connect is ready!"
-        break
-    fi
-    if [ $i -eq 30 ]; then
-        print_error "Debezium Connect failed to start within 5 minutes"
-        exit 1
-    fi
-    print_status "Waiting for Debezium Connect... ($i/30)"
-    sleep 10
-done
-
-# Start Redis and RabbitMQ
-print_status "Starting Redis and RabbitMQ..."
-docker compose -f docker-compose.dev.yml --env-file .env.dev up -d redis rabbitmq
-
-# Wait for Redis and RabbitMQ to be ready
-print_status "Waiting for Redis and RabbitMQ to be ready..."
 sleep 15
+
 
 # Start Hono Accelerator
 print_status "Starting Hono Accelerator..."
@@ -220,26 +120,6 @@ for i in {1..30}; do
     sleep 10
 done
 
-# Register Debezium MySQL connector
-print_status "Registering Debezium MySQL connector..."
-sleep 10
-
-# Replace environment variables in connector config
-envsubst < debezium-config/mysql-connector.json > /tmp/mysql-connector.json
-
-# Register the connector
-if curl -X POST http://localhost:8083/connectors \
-    -H "Content-Type: application/json" \
-    -d @/tmp/mysql-connector.json > /dev/null 2>&1; then
-    print_success "Debezium MySQL connector registered successfully!"
-else
-    print_warning "Failed to register Debezium connector. You may need to register it manually."
-    print_status "You can register it manually with:"
-    print_status "curl -X POST http://localhost:8083/connectors -H 'Content-Type: application/json' -d @debezium-config/mysql-connector.json"
-fi
-
-# Clean up temp file
-rm -f /tmp/mysql-connector.json
 
 # Show service status
 print_status "Checking all services status..."
@@ -253,26 +133,12 @@ echo "  • Store24h API: http://localhost:80"
 echo "  • API Health: http://localhost:80/actuator/health"
 echo "  • Hono Accelerator: http://localhost:3001"
 echo "  • RabbitMQ Management: http://localhost:15672 (admin/admin123)"
-echo "  • Debezium Connect: http://localhost:8083"
-echo "  • MongoDB: localhost:27017"
 echo "  • Redis: localhost:6379"
-echo "  • Kafka: localhost:9092"
 echo ""
 print_status "🔧 Useful commands:"
 echo "  • View logs: docker logs store24h-api -f"
 echo "  • Stop all: docker compose -f docker-compose.dev.yml --env-file .env.dev down"
 echo "  • Restart API: docker compose -f docker-compose.dev.yml --env-file .env.dev restart store24h-api"
-echo "  • Check CDC topics: docker exec store24h-kafka kafka-topics --bootstrap-server localhost:9092 --list"
 echo ""
-print_status "📈 CDC Topics created:"
-echo "  • cache-sync.chip_model"
-echo "  • cache-sync.chip_model_online"
-echo "  • cache-sync.servicos"
-echo "  • cache-sync.v_operadoras"
-echo "  • cache-sync.chip_number_control"
-echo "  • cache-sync.chip_number_control_alias_service"
-echo "  • cache-sync.usuario"
-echo "  • cache-sync.activation"
-echo ""
-print_success "🚀 Your development environment with real-time CDC is now running!"
-print_status "Cache updates will now happen within 200ms of MySQL changes!"
+print_success "🚀 Your development environment is now running!"
+print_status "Cache updates will happen every 2-15 minutes via scheduled sync!"

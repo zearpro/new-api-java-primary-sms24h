@@ -191,19 +191,8 @@ services:
       - SPRING_RABBITMQ_USERNAME=${RABBITMQ_USER:-guest}
       - SPRING_RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD:-guest}
       - CACHE_WARMING_ENABLED=${CACHE_WARMING_ENABLED:-true}
-      # CDC Kafka Configuration
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - SPRING_KAFKA_CONSUMER_GROUP_ID=cache-sync-group
-      - SPRING_KAFKA_CONSUMER_AUTO_OFFSET_RESET=earliest
-      - SPRING_KAFKA_CONSUMER_KEY_DESERIALIZER=org.apache.kafka.common.serialization.StringDeserializer
-      - SPRING_KAFKA_CONSUMER_VALUE_DESERIALIZER=org.apache.kafka.common.serialization.StringDeserializer
     depends_on:
       rabbitmq:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
-      debezium-connect:
         condition: service_healthy
       mongodb:
         condition: service_healthy
@@ -219,12 +208,6 @@ services:
 
 volumes:
   rabbitmq_data:
-    driver: local
-  zookeeper-data:
-    driver: local
-  zookeeper-logs:
-    driver: local
-  kafka-data:
     driver: local
   mongodb-data:
     driver: local
